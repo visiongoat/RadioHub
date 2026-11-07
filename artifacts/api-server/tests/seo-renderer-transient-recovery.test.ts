@@ -118,7 +118,10 @@ beforeEach(() => {
 
 test('station cross-links read compact native cards, retaining identity, visibility and ranking filters', async () => {
   stationOverrides = { state: 'Berlin' };
-  relatedCards = [{ _id: 'related', name: 'Related Radio', slug: 'related-radio', country: 'Germany', isListVisible: true }];
+  relatedCards = [
+    { _id: 'test-station', name: 'Recovery FM', slug: 'recovery-fm', country: 'Germany', isListVisible: true },
+    { _id: 'related', name: 'Related Radio', slug: 'related-radio', country: 'Germany', isListVisible: true },
+  ];
   const result = await renderer.renderStaticPage(url, 'https://themegaradio.com');
   assert.equal(result.pageData.station.name, 'Recovery FM');
   assert.equal(relatedReads.length, 3);
@@ -126,10 +129,11 @@ test('station cross-links read compact native cards, retaining identity, visibil
     assert.deepEqual(options.fields, ['name', 'slug', 'favicon', 'logoAssets', 'country', 'countryCode', 'tags', 'votes']);
     assert.equal(filter.noIndex.$ne, true);
     assert.equal(filter.isListVisible, true);
-    assert.equal(filter._id.$ne, 'test-station');
+    assert.equal(filter._id, undefined, 'self exclusion happens after the shared country/state/publisher query');
+    assert.equal(typeof options.sharedCardsKey, 'string');
     assert.deepEqual(options.sort, { votes: -1 });
   }
-  assert.deepEqual(relatedReads.map(read => read.options.limit), [8, 6, 7]);
+  assert.deepEqual(relatedReads.map(read => read.options.limit), [9, 7, 8]);
   assert.deepEqual(result.pageData.additionalData.crossLinks.samePublisher.map((row: any) => row.slug), ['related-radio']);
   const body = renderer.generateHtmlBody({ pageType: 'station', stationData: result.pageData.station,
     additionalData: result.pageData.additionalData, language: 'en', translations: {}, seoTags: result.seoTags });

@@ -77,6 +77,7 @@ mock.module('../src/utils/logger', { namedExports: { logger: { warn: () => {} } 
 
 const module = await import('../src/data/postgres-seo-read-store');
 const { pgSeoCatalog } = module;
+const { relatedStationCards } = await import('../src/seo/related-station-cards');
 const { publicStationCache, publicStationCacheKey } = await import('../src/public-station-cache');
 const storageKey = (key: string) => publicStationCacheKey(`ssr-grid:v1:${key}`);
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -120,6 +121,36 @@ test('retains only the original named export and a single bounded catalog instan
   assert.equal(typeof instances[0].pool.query, 'function');
   assert.equal(connect.mock.callCount(), 0);
   assert.equal(defaultQuery.mock.callCount(), 0);
+});
+
+test('related stations share one query across station pages, excluding each page only after reading', async () => {
+  const pool = Array.from({ length: 9 }, (_, i) => ({ _id: `station-${i}`, name: `Radio ${i}` }));
+  find = async () => pool;
+  const results = await Promise.all(Array.from({ length: 14 }, (_, i) =>
+    relatedStationCards('country', 'Germany', `station-${i % 9}`, 8)));
+  assert.equal(calls.length, 1);
+  for (let i = 0; i < results.length; i++) {
+    assert.equal(results[i].length, 8);
+    assert.ok(results[i].every(card => card._id !== `station-${i % 9}`));
+  }
+  const [filter, options] = calls[0].args as [Record<string, unknown>, Record<string, unknown>];
+  assert.equal(filter.country, 'Germany');
+  assert.equal(filter.isListVisible, true);
+  assert.deepEqual(filter.noIndex, { $ne: true });
+  assert.equal(filter._id, undefined);
+  assert.equal(options.limit, 9);
+  assert.deepEqual(options.sort, { votes: -1 });
+});
+
+test('related station scopes and literal publisher prefixes do not collide', async () => {
+  await relatedStationCards('country', 'C++', 'self', 6);
+  await relatedStationCards('state', 'C++', 'self', 6);
+  await relatedStationCards('publisher', 'C++', 'self', 6);
+  await relatedStationCards('publisher', 'C++', 'other', 6);
+  assert.equal(calls.length, 3);
+  assert.deepEqual((calls[2].args[0] as any).name, { $regex: '^C\\+\\+' });
+  assert.deepEqual(await relatedStationCards('country', '', 'self', 8), []);
+  assert.equal(calls.length, 3);
 });
 
 test('14 concurrent callers and 14 later callers for one key execute only one find', async () => {

@@ -66,6 +66,7 @@ export class PerformanceCache {
   private seoHtmlCache: NodeCache; 
   private pageDataCache: NodeCache;
   private quickCache: NodeCache;
+  private recency = new WeakMap<NodeCache, Map<string, true>>();
 
   private lastCacheFullWarnTime: Record<string, number> = {};
   private static CACHE_FULL_WARN_COOLDOWN = 60_000;
@@ -122,18 +123,38 @@ export class PerformanceCache {
     logger.log('🚀 CACHE: Performance cache system initialized');
   }
 
+  private cacheOrder(cache: NodeCache): Map<string, true> {
+    let order = this.recency.get(cache);
+    if (!order) {
+      order = new Map(cache.keys().map(key => [key, true]));
+      this.recency.set(cache, order);
+      const tracked = order;
+      cache.on('del', (key: string) => tracked.delete(key));
+      cache.on('flush', () => tracked.clear());
+    }
+    return order;
+  }
+
+  private read<T = any>(cache: NodeCache, key: string): T | undefined {
+    const order = this.cacheOrder(cache);
+    const value = cache.get<T>(key);
+    if (value !== undefined) { order.delete(key); order.set(key, true); }
+    return value;
+  }
+
   private safeSet(cache: NodeCache, cacheName: string, key: string, value: any, ttl?: number): boolean {
     // CRITICAL: every cache uses `useClones: false` so mutating a cached value
     // poisons it for every other consumer. Freeze on write so any accidental
     // mutation throws instead of silently corrupting shared state.
     const frozen = deepFreeze(value);
+    const order = this.cacheOrder(cache);
+    const write = () => {
+      const stored = ttl !== undefined ? cache.set(key, frozen, ttl) : cache.set(key, frozen);
+      if (stored) { order.delete(key); order.set(key, true); }
+      return stored;
+    };
     try {
-      if (ttl !== undefined) {
-        cache.set(key, frozen, ttl);
-      } else {
-        cache.set(key, frozen);
-      }
-      return true;
+      return write();
     } catch (err: any) {
       if (err?.errorcode === 'ECACHEFULL') {
         const now = Date.now();
@@ -141,21 +162,16 @@ export class PerformanceCache {
         if (now - lastWarn > PerformanceCache.CACHE_FULL_WARN_COOLDOWN) {
           this.lastCacheFullWarnTime[cacheName] = now;
           const keyCount = cache.keys().length;
-          logger.warn(`⚠️ CACHE FULL: ${cacheName} hit maxKeys (${keyCount} keys) — evicting oldest 30% and retrying`);
+          logger.warn(`CACHE CAPACITY: ${cacheName} reached ${keyCount} keys; replacing one LRU entry`);
         }
-        const allKeys = cache.keys();
-        const evictCount = Math.max(Math.floor(allKeys.length * 0.3), 50);
-        const keysToEvict = allKeys.slice(0, evictCount);
-        cache.del(keysToEvict);
+        // NodeCache also rejects replacing an existing key at maxKeys.
+        const victim = cache.has(key) ? key : order.keys().next().value;
+        if (victim === undefined) return false;
+        cache.del(victim);
         try {
           // Use the already-frozen reference so the eviction-retry path can't
           // smuggle mutable values into a `useClones: false` cache.
-          if (ttl !== undefined) {
-            cache.set(key, frozen, ttl);
-          } else {
-            cache.set(key, frozen);
-          }
-          return true;
+          return write();
         } catch {
           return false;
         }
@@ -174,7 +190,7 @@ export class PerformanceCache {
   // === TRANSLATION CACHING ===
   
   getTranslations(language: string): Record<string, string> | null {
-    const result = this.translationsCache.get(`translations:${language}`) as Record<string, string> | undefined;
+    const result = this.read<Record<string, string>>(this.translationsCache, `translations:${language}`);
     return result || null;
   }
   
@@ -186,7 +202,7 @@ export class PerformanceCache {
   
   getSeoHtml(url: string, userAgent: string = 'bot'): string | null {
     const cacheKey = `seo:${SEO_CACHE_NAMESPACE}:${userAgent}:${url}`;
-    const result = this.seoHtmlCache.get(cacheKey) as string | undefined;
+    const result = this.read<string>(this.seoHtmlCache, cacheKey);
     if (result) limitPublicStationDeadline(this.seoHtmlCache.getTtl(cacheKey) || Date.now());
     return result || null;
   }
@@ -210,7 +226,7 @@ export class PerformanceCache {
   
   getPageData(url: string): any | null {
     const key = `page:${SEO_CACHE_NAMESPACE}:${url}`;
-    const result = this.pageDataCache.get(key);
+    const result = this.read(this.pageDataCache, key);
     if (result && stationDependent(result)) limitPublicStationDeadline(this.pageDataCache.getTtl(key) || Date.now());
     return result || null;
   }
@@ -234,7 +250,7 @@ export class PerformanceCache {
   // === QUICK CACHING ===
   
   getQuick(key: string): any | null {
-    const result = this.quickCache.get(key);
+    const result = this.read(this.quickCache, key);
     return result || null;
   }
   
@@ -253,7 +269,7 @@ export class PerformanceCache {
   });
   
   getSimilarPool(country: string): any[] | null {
-    const result = this.similarStationsCache.get(`similar:${country}`) as any[] | undefined;
+    const result = this.read<any[]>(this.similarStationsCache, `similar:${country}`);
     return result || null;
   }
   
@@ -262,7 +278,7 @@ export class PerformanceCache {
   }
   
   getGlobalPopularPool(): any[] | null {
-    const result = this.similarStationsCache.get('similar:global') as any[] | undefined;
+    const result = this.read<any[]>(this.similarStationsCache, 'similar:global');
     return result || null;
   }
   
@@ -379,7 +395,7 @@ export class PerformanceCache {
   }
 
   async getCountryLanguageMappings(): Promise<Map<string, string>> {
-    const cached = this.quickCache.get('country_language_mappings');
+    const cached = this.read(this.quickCache, 'country_language_mappings');
     if (cached) return cached as Map<string, string>;
     
     
@@ -400,7 +416,7 @@ export class PerformanceCache {
   }
 
   async getUrlTranslations(): Promise<Map<string, string>> {
-    const cached = this.quickCache.get('url_translations');
+    const cached = this.read(this.quickCache, 'url_translations');
     if (cached) return cached as Map<string, string>;
     
     

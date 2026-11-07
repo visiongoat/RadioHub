@@ -29,6 +29,7 @@ import { collectStationLinkTargets, resolveStationLinkLanguages, buildStationLin
 import { readSeoStationLinkMetadata } from './data/postgres-seo-station-link-store';
 import { loadPublicDiscoveryStations, trendingPageSeo } from './seo/public-discovery';
 import { resolveBareDiscoveryPath } from './seo/public-route-matchers';
+import { relatedStationCards } from './seo/related-station-cards';
 
 // The renderer only needs this small subset of the normalized catalog shape.
 interface LeanStationCard {
@@ -1552,26 +1553,16 @@ export class SeoRenderer {
         })();
         const stateName: string = (stationData.state || '').toString().trim();
 
-        const baseFilter: any = {
-          noIndex: { $ne: true },
-          isListVisible: true,
-          $and: [
-            { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
-          ],
-        };
-        if (selfId) baseFilter._id = { $ne: selfId };
-        const cardFields = ['name', 'slug', 'favicon', 'logoAssets', 'country', 'countryCode', 'tags', 'votes'];
-
         const sameCountryQ: Promise<any[]> = country
           ? withSignal<any[]>(
-              pgSeoCatalog().find({ ...baseFilter, country }, { fields: cardFields, sort: { votes: -1 }, limit: 8 }),
+              relatedStationCards('country', country, selfId, 8),
               signal,
             ).catch(() => [])
           : Promise.resolve([]);
         const sameGenreQ: Promise<any[]> = Promise.resolve([]);
         const sameCityQ: Promise<any[]> = stateName
           ? withSignal<any[]>(
-              pgSeoCatalog().find({ ...baseFilter, state: stateName }, { fields: cardFields, sort: { votes: -1 }, limit: 6 }),
+              relatedStationCards('state', stateName, selfId, 6),
               signal,
             ).catch(() => [])
           : Promise.resolve([]);
@@ -1593,10 +1584,7 @@ export class SeoRenderer {
         })();
         const samePublisherQ: Promise<any[]> = brandToken
           ? withSignal<any[]>(
-              pgSeoCatalog().find({
-                ...baseFilter,
-                name: { $regex: `^${brandToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` },
-              }, { fields: cardFields, sort: { votes: -1 }, limit: 7 }),
+              relatedStationCards('publisher', brandToken, selfId, 7),
               signal,
             ).catch(() => [])
           : Promise.resolve([]);

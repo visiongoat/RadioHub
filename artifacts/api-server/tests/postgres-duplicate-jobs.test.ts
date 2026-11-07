@@ -67,6 +67,22 @@ describe('durable duplicate preview/apply worker', { skip: !url }, () => {
     assert.equal((await fixture.pool.query('SELECT station_ids FROM station_duplicate_job_groups WHERE job_id=$1 AND status=$2', [id,'eligible'])).rows[0].station_ids.length, 2);
   });
 
+  it('automatic stream prefilter retains Unicode/whitespace matches without accepting same-stream different identities', async () => {
+    await add('ＦＭ  Radio', { url: ' https://fixture.invalid/shared ' });
+    await add('fm Radio', { url: 'https://fixture.invalid/shared' });
+    const different = await add('Another station', { url: 'https://fixture.invalid/shared' });
+    const unique = await add('fm Radio', { url: 'https://fixture.invalid/unique' });
+    const emptyA = await add('Empty', { url: '' });
+    const emptyB = await add('Empty', { url: '  ' });
+    await fixture.pool.query('UPDATE station_duplicate_merge_control SET next_auto_at=$1', [now]);
+    await store.runCycle(advance());
+    const job = (await store.getStatus()).latestApply!;
+    const done = await finish(job.jobId);
+    assert.equal(done.results.totalGroups, 1);
+    assert.equal(done.results.totalStationsDeleted, 1);
+    for (const station of [different, unique, emptyA, emptyB]) assert.ok(await catalog.findById(station._id));
+  });
+
   it('requires a completed preview, applies immutable IDs once, and preserves added stations', async () => {
     await add('Safe station'); await add('Safe station');
     await assert.rejects(store.createApply(undefined), { status: 400 });

@@ -114,13 +114,18 @@ export class PostgresDuplicateJobsStore {
     // SQL stores only IDs + bounded group metadata, never source/descriptions.
     // Automatic discovery is deliberately stricter than manual preview: an
     // identical raw endpoint is required before even entering its 100-group cap.
+    // Discard unique endpoints before expensive Unicode normalization/sorting.
+    // This is only a prefilter; all identity, cursor and merge checks remain.
     const automatic = job.kind === 'automatic';
     const seed = async (cursor?: { name: string; country: string; stream?: string }) => client.query(`WITH grouped AS (
       SELECT lower(btrim(regexp_replace(normalize(name,NFKC),'\\s+',' ','g'))) AS name,
         lower(btrim(regexp_replace(normalize(COALESCE(country,''),NFKC),'\\s+',' ','g'))) AS country,
         ${automatic ? "btrim(url)" : "''::text"} AS stream,
         (array_agg(id ORDER BY id))[1:51] AS ids,count(*)::integer AS members
-      FROM stations WHERE char_length(btrim(name)) >= $2
+      FROM ${automatic ? `(SELECT id,name,country,url,
+        count(*) OVER (PARTITION BY btrim(url)) AS endpoint_count
+        FROM stations WHERE NULLIF(btrim(url),'') IS NOT NULL) stations` : 'stations'}
+      WHERE char_length(btrim(name)) >= $2 ${automatic ? 'AND endpoint_count>1' : ''}
       GROUP BY 1,2,3 HAVING count(*)>1
       ${automatic ? "AND bool_and(NULLIF(btrim(url),'') IS NOT NULL)" : ''}
     ), candidates AS (

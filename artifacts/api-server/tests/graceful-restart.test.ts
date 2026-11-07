@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createGracefulRestartController } from '../src/utils/graceful-restart';
 
 test('external shutdown remains exit zero when no internal recovery was requested', () => {
@@ -27,6 +28,28 @@ test('signal dispatch failure falls back to a forced failure exit', () => {
   restart.request();
   assert.equal(forced, 1);
   assert.equal(restart.exitCode(), 1);
+});
+
+test('real child processes distinguish external shutdown from an internal restart', () => {
+  for (const internal of [false, true]) {
+    const moduleUrl = new URL('../src/utils/graceful-restart.ts', import.meta.url).href;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { requestGracefulRestart, requestedShutdownExitCode } from ${JSON.stringify(moduleUrl)};
+      process.on('SIGTERM', () => process.exit(requestedShutdownExitCode()));
+      setInterval(() => {}, 1000);
+      ${internal ? 'requestGracefulRestart()' : "process.kill(process.pid, 'SIGTERM')"};
+    `], { timeout: 5000, encoding: 'utf8' });
+    assert.equal(child.error, undefined);
+    assert.equal(child.signal, null, child.stderr);
+    assert.equal(child.status, internal ? 1 : 0, child.stderr);
+  }
+});
+
+test('stream recovery uses failure intent while external SIGTERM remains graceful', () => {
+  const proxy = readFileSync(new URL('../src/index-proxy.ts', import.meta.url), 'utf8');
+  assert.equal((proxy.match(/requestGracefulRestart\(\)/g) || []).length, 3);
+  assert.ok(proxy.includes('process.exit(requestedShutdownExitCode())'));
+  assert.doesNotMatch(proxy, /process\.kill\(process\.pid,\s*'SIGTERM'\)/);
 });
 test('API recovery paths and optional scheduled restart use the same nonzero graceful intent', () => {
   const api = readFileSync(new URL('../src/index-api.ts', import.meta.url), 'utf8');
