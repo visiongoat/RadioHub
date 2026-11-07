@@ -3,6 +3,8 @@ import type { Request, Response } from "express";
 // Deliberately enumerated public, non-personalized reads. Never use a prefix
 // such as /api/stations/*: adjacent routes contain user ratings and mutations.
 const PUBLIC_READ_PATHS = [
+  /^\/api\/app\/pages\/?$/,
+  /^\/api\/radio-browser\/(?:top-clicked|top-voted|recent)\/?$/,
   /^\/api\/translations\/[a-z]{2,3}(?:-[a-z0-9]{2,8})*(?:\/critical)?\/?$/i,
   /^\/api\/(?:countries|languages|codecs)\/?$/,
   /^\/api\/filters\/(?:countries|languages|genres)\/?$/,

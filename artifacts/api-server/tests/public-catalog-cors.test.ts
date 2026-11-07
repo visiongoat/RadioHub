@@ -12,7 +12,7 @@ function request(path: string, origin: string, method = "GET", extra = {}) {
 }
 for (const origin of ["null", "app://com.themegaradio.app", "http://127.0.0.1:4188"]) {
   test(`${origin}: packaged TV public catalog reads are available without credentials`, () => {
-    for (const path of ["/api/translations/en", "/api/translations/pt-BR/critical", "/api/countries", "/api/genres", "/api/genres/discoverable", "/api/filters/countries", "/api/stations", "/api/stations/popular", "/api/stations/precomputed", "/api/station/test-radio", "/api/now-playing/123"]) {
+    for (const path of ["/api/app/pages", "/api/radio-browser/top-clicked", "/api/radio-browser/top-voted", "/api/radio-browser/recent", "/api/translations/en", "/api/translations/pt-BR/critical", "/api/countries", "/api/genres", "/api/genres/discoverable", "/api/filters/countries", "/api/stations", "/api/stations/popular", "/api/stations/precomputed", "/api/station/test-radio", "/api/now-playing/123"]) {
       for (const method of ["GET", "HEAD"]) {
         const result = request(path, origin, method);
         assert.equal(result.applied, true, `${method} ${path}`);
@@ -35,7 +35,7 @@ for (const origin of ["null", "app://com.themegaradio.app", "http://127.0.0.1:41
     }
   });
   test(`${origin}: private endpoints and mutations never gain public CORS`, () => {
-    for (const path of ["/api/admin/stations", "/api/auth/me", "/api/user/favorites", "/api/tv/entitlement", "/api/stations/123/user-rating", "/api/stations/123/ratings", "/api/stations/delete", "/api/translations/en/admin", "/api/genres/admin", "/api/ml/user-profile/123"]) {
+    for (const path of ["/api/radio-browser/broken", "/api/app/pages/admin", "/api/tv/auth/code", "/api/admin/stations", "/api/auth/me", "/api/user/favorites", "/api/tv/entitlement", "/api/stations/123/user-rating", "/api/stations/123/ratings", "/api/stations/delete", "/api/translations/en/admin", "/api/genres/admin", "/api/ml/user-profile/123"]) {
       for (const method of ["GET", "OPTIONS"]) {
         const result = request(path, origin, method, {"access-control-request-method": "GET"});
         assert.equal(result.applied, false, `${method} ${path}`);
