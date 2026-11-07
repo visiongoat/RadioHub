@@ -1,3 +1,4 @@
+import { applyPublicStreamCors } from "./lib/public-stream-cors";
 if (!process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_FILE === '/dev/null') {
   process.env.FONTCONFIG_FILE = process.cwd() + '/fontconfig.conf';
 }
@@ -279,6 +280,9 @@ app.use((req, res, next) => {
   // pure noise.
 
   if (req.method === 'OPTIONS') {
+    // This middleware terminates preflights before /api/stream forwarding.
+    // Reuse the exact anonymous-media policy; private paths remain unchanged.
+    applyPublicStreamCors(req, res);
     res.sendStatus(200);
     return;
   }

@@ -60,3 +60,29 @@ test("real HTTP streaming bytes and resolver JSON retain credential-free CORS", 
     const r=await fetch(base+"/healthz",{headers:{origin:"null"}});assert.equal(r.headers.get("access-control-allow-origin"),null);
   }finally{await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
 });
+
+// Production web terminates OPTIONS before proxying; exercise that order so
+// the media upstream cannot mask a missing browser-visible preflight header.
+test("web early OPTIONS supports public media but not private or credentialed preflights", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/index-web.ts", import.meta.url), "utf8");
+  const earlyOptions = source.slice(source.indexOf("if (req.method === 'OPTIONS')"));
+  assert.ok(earlyOptions.indexOf("applyPublicStreamCors(req, res)") < earlyOptions.indexOf("res.sendStatus(200)"));
+  const app = express();
+  app.use((req,res,next) => {if(req.method === "OPTIONS"){applyPublicStreamCors(req,res);res.sendStatus(200);return;}next();});
+  const server = app.listen(0,"127.0.0.1");
+  await new Promise<void>(resolve=>server.once("listening",resolve));
+  const base=`http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+  try {
+    for (const path of [media,"/api/stream/resolve"]) {
+      const r=await fetch(base+path,{method:"OPTIONS",headers:{origin:"null","access-control-request-method":"GET","access-control-request-headers":"Range, Content-Type"}});
+      assert.equal(r.status,200);assert.equal(r.headers.get("access-control-allow-origin"),"*");assert.equal(r.headers.get("access-control-allow-credentials"),null);
+    }
+    for(const path of ["/api/auth/me","/api/stream/private-diagnostics"]) {
+      const r=await fetch(base+path,{method:"OPTIONS",headers:{origin:"null","access-control-request-method":"GET"}});
+      assert.equal(r.headers.get("access-control-allow-origin"),null);
+    }
+    const r=await fetch(base+"/api/stream/resolve",{method:"OPTIONS",headers:{origin:"null","access-control-request-method":"GET","access-control-request-headers":"Authorization"}});
+    assert.equal(r.headers.get("access-control-allow-origin"),null);
+  } finally {await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
+});
