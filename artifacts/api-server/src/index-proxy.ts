@@ -1,3 +1,4 @@
+import { applyPublicStreamCors } from "./lib/public-stream-cors";
 import express from "express";
 import compression from "compression";
 import { registerStreamProxyRoutes } from "./routes/stream-proxy-routes";
@@ -38,6 +39,7 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
   res.setHeader('Vary', 'Origin');
+  applyPublicStreamCors(req, res);
 
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Max-Age', '86400');
