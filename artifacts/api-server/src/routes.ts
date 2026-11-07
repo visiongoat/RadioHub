@@ -127,7 +127,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // probe used to verify the Atlas index audit (May 14, hid 17 stations
   // indexes) has been REMOVED. If you ever need it again, re-add a
   // local one-off behind requireAdmin and remove it after the audit.
-  // The hint discipline rule (replit.md) keeps us safe without a
+  // The verified-index hint discipline keeps us safe without a
   // permanent admin surface.
 
   // === HEALTH CHECK ===
@@ -549,8 +549,8 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // country aggregates back-to-back, each holding a connection slot for
   // up to socketTimeoutMS(45s). On a fresh boot with empty genre_counts
   // it saturated the M10 pool within ~5 minutes and cascaded into
-  // /api/stations + /api/regions + /api/genres timeouts. Per replit.md
-  // "Lazy cache fill — NO eager boot warmup" rule, leave the table
+  // /api/stations + /api/regions + /api/genres timeouts. Preserve lazy
+  // cache filling without eager boot warmups; leave the table
   // empty; the 3:30 AM cron will populate it. Cold misses on
   // /api/genres/precomputed are protected by their own SWR + single-
   // flight wrapper, so the first organic request per country pays the

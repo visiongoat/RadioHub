@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import {
-  safeOAuthReturnTo, resolveGoogleOAuthReturnTo, buildRedirectWithToken,
+  googleOAuthCallbackUrl, safeOAuthReturnTo, resolveGoogleOAuthReturnTo, buildRedirectWithToken,
   buildOAuthFailureRedirect, buildGoogleSessionRedirect,
 } from '../src/auth/oauth-redirect';
 
@@ -12,6 +12,15 @@ const sign = (target: unknown) => {
   const payload = Buffer.from(JSON.stringify({ r: target })).toString('base64url');
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url').slice(0, 16)}`;
 };
+
+test('Google OAuth callback retains explicit configuration and frontend/default fallbacks', () => {
+  assert.equal(googleOAuthCallbackUrl({}), `${site}/api/auth/google/callback`);
+  assert.equal(googleOAuthCallbackUrl({ FRONTEND_URL: 'https://frontend.example' }), 'https://frontend.example/api/auth/google/callback');
+  assert.equal(googleOAuthCallbackUrl({ FRONTEND_URL: 'http://localhost:22507' }), 'http://localhost:22507/api/auth/google/callback');
+  assert.equal(googleOAuthCallbackUrl({
+    FRONTEND_URL: 'https://frontend.example', GOOGLE_CALLBACK_URL: 'https://api.example/api/auth/google/callback',
+  }), 'https://api.example/api/auth/google/callback');
+});
 
 test('successful TV redirects keep the localized route, six-digit code, query and fragment', () => {
   for (const base of [site, '']) {

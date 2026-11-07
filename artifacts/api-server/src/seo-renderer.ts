@@ -2469,8 +2469,8 @@ export class SeoRenderer {
       case 'home': {
         const heroCopy = getHomeHeroCopy(language);
         // LCP fix (PageSpeed 2026-07-03): the SSR body is what paints first
-        // (React later repaints over it — see replit.md, body is replaced not
-        // hydrated). Without the hero image here, the page's largest paint
+        // (React later replaces rather than hydrates it). Without the hero
+        // image here, the page's largest paint
         // was the REACT-rendered hero at ~8s on mobile (after the JS + API
         // waterfall), which is exactly what Lighthouse reported as LCP 8.4s.
         // Rendering the SAME <picture> markup the SPA hero uses (identical

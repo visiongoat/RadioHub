@@ -522,7 +522,7 @@ function clampGraphemes(text: string, maxChars: number): string {
  * If `dbTranslations` provides any of the legacy SEO keys IN THE REQUESTED LANGUAGE,
  * they win — but the description stays in the chosen language (no English-template padding).
  *
- * Defensive: enforces 145-char max on description per replit.md META DESCRIPTION LENGTH RULE.
+ * Defensive: enforces a 145-character maximum description length.
  */
 export function buildGenreSeo(
   genreName: string,

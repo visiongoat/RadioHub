@@ -70,9 +70,6 @@ function getFrameOptionsHeader(): string | null {
   if (process.env.CLICKJACKING_MITIGATION) {
     return process.env.CLICKJACKING_MITIGATION;
   }
-  if (process.env.REPLIT_DOMAINS) {
-    return null;
-  }
   return 'DENY';
 }
 
@@ -452,11 +449,10 @@ app.get('/admin', sendAdminSpa);
 app.get('/admin/*path', sendAdminSpa);
 app.get('/admin-login', sendAdminSpa);
 
-const isReplit = !!process.env.REPLIT_DOMAINS;
-const useSecureCookies = process.env.NODE_ENV === 'production' || isReplit;
+const useSecureCookies = process.env.NODE_ENV === 'production';
 
-if ((process.env.NODE_ENV === 'production' || isReplit) && !process.env.SESSION_SECRET) {
-  console.error('🚨 FATAL: SESSION_SECRET environment variable is required in production/Replit');
+if (useSecureCookies && !process.env.SESSION_SECRET) {
+  console.error('🚨 FATAL: SESSION_SECRET environment variable is required in production');
   process.exit(1);
 }
 
@@ -484,8 +480,8 @@ const sessionConfig: session.SessionOptions = {
     secure: useSecureCookies,
     httpOnly: true,
     maxAge: 3 * 24 * 60 * 60 * 1000,
-    // Force sameSite='none' whenever the cookie is secure (production /
-    // Replit / Railway). The frontend (themegaradio.com) and the API
+    // Force sameSite='none' whenever the cookie is secure. The frontend
+    // (themegaradio.com) and the API
     // (api.themegaradio.com) are different origins from the browser's POV,
     // so the session cookie MUST be SameSite=None;Secure to be sent on the
     // POST /api/auth/token-session call after the OAuth redirect.
@@ -498,7 +494,7 @@ const sessionConfig: session.SessionOptions = {
   rolling: false
 };
 
-logger.log(`🔐 API Session config: secure=${useSecureCookies}, isReplit=${isReplit}, NODE_ENV=${process.env.NODE_ENV}, cookieDomain=${cookieDomain || 'auto'}, sameSite=${cookieDomain ? 'none' : (isReplit ? 'none' : 'lax')}`);
+logger.log(`🔐 API Session config: secure=${useSecureCookies}, NODE_ENV=${process.env.NODE_ENV}, cookieDomain=${cookieDomain || 'auto'}, sameSite=${useSecureCookies ? 'none' : 'lax'}`);
 
 sessionConfig.store = new PostgresSessionStore(getPostgresPool());
 logger.log('🔐 Using PostgreSQL session store');

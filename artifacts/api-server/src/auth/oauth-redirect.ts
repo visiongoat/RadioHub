@@ -4,6 +4,10 @@ import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 const referenceOrigin = 'https://oauth-return.invalid';
 const languages = new Set(SEO_LANGUAGES.filter(language => language.enabled).map(language => language.code));
 
+export function googleOAuthCallbackUrl(env: { GOOGLE_CALLBACK_URL?: string; FRONTEND_URL?: string } = process.env): string {
+  return env.GOOGLE_CALLBACK_URL || `${env.FRONTEND_URL || 'https://themegaradio.com'}/api/auth/google/callback`;
+}
+
 /** Never attach an authentication token to an untrusted or ambiguous origin. */
 export function safeOAuthReturnTo(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value || value.length > 2048 || !value.startsWith('/')

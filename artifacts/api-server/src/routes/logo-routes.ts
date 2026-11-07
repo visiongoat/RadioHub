@@ -8,7 +8,6 @@ import { logoProcessor } from "../services/logo-processor";
 import { scheduledLogoProcessor } from "../services/scheduled-logo-processor";
 import { isS3Configured } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
-import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
 import { backfillLogoVariants, parseLogoVariantRequest, LogoVariantRequestError } from '../services/logo-variant-backfill';
 

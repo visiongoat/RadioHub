@@ -314,9 +314,8 @@ app.use((req, res, next) => {
   let targetHost = originalHost;
   let targetPath = originalPath;
 
-  // 1. HTTPS (skip in dev/replit preview where x-forwarded-proto isn't set)
-  const isPreview = req.hostname.includes('replit.dev') || req.hostname === 'localhost';
-  if (!isPreview && originalProtocol === 'http') {
+  // 1. Enforce HTTPS after the development/localhost bypass above.
+  if (originalProtocol === 'http') {
     targetProtocol = 'https';
   }
 
@@ -858,8 +857,6 @@ app.use('/api/stream', forwardApiRequest(streamServiceProxy));
 
     try {
       const productionDomain = 'https://themegaradio.com';
-      const actualHost = req.get('host') || 'themegaradio.com';
-      const ogImageDomain = actualHost.includes('replit') ? `https://${actualHost}` : productionDomain;
 
       // SEO-CACHE SAFETY (2026-07-02 audit P1): the preferredLanguage cookie
       // used to override the URL-derived render language here (a TR-cookied
@@ -878,7 +875,7 @@ app.use('/api/stream', forwardApiRequest(streamServiceProxy));
       // CRITICAL: seoData.seoTags is shared from a `useClones: false` cache and
       // is frozen on write — clone before overriding the domain so that this
       // request-specific value doesn't poison cached SEO data for others.
-      const seoTags = { ...seoData.seoTags, domain: ogImageDomain };
+      const seoTags = { ...seoData.seoTags, domain: productionDomain };
       const pageType = seoData.pageData?.pageType || 'unknown';
 
       // RTL FIX (2026-05-08): emit dir="rtl" for right-to-left languages

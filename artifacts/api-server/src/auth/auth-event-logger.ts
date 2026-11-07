@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 // login attempt (Google OAuth, Apple Sign-In, email/password, mobile token
 // flows) is funnelled through `logAuthEvent`. The helper does TWO things:
 //   1) Prints a single-line structured record to stdout so it appears in the
-//      Railway/Replit live tail (✅ AUTH ... or ❌ AUTH ...).
+//      Deployment live tail (✅ AUTH ... or ❌ AUTH ...).
 //   2) Persists the same record to the `auth_event_logs` PostgreSQL table
 //      asynchronously so it survives process restarts and page refreshes.
 // Failures of the audit write are themselves logged but NEVER throw — auth

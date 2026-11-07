@@ -3,6 +3,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import { Strategy as LocalStrategy } from 'passport-local';
 import bcrypt from 'bcrypt';
+import { googleOAuthCallbackUrl } from './oauth-redirect';
 import { newPublicUserId, pgCreateUser, pgDeleteUser, pgFindUserById, pgFindUserByIdentity, pgUpdateUser, pgUserSlugExists, userStore, } from '../data/postgres-user-store';
 async function findIdentity(input: {
     email?: string;
@@ -53,19 +54,9 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     // This allows different domains for dev/test/production environments
     // Google Console MUST have EXACTLY this URL registered as a valid redirect URI
     //
-    // IMPORTANT FIX (Nov 2025): Set GOOGLE_CALLBACK_URL env var explicitly to avoid :5000 port mismatch
-    // Replit's proxy may add :5000 to REPLIT_DOMAINS auto-detected URLs, causing Google OAuth to reject the callback
-    // Solution: Always set GOOGLE_CALLBACK_URL to the exact URL registered in Google Console (without port)
+    // Set GOOGLE_CALLBACK_URL to the exact URL registered in Google Console.
     // Example: GOOGLE_CALLBACK_URL=https://themegaradio.com/api/auth/google/callback
-    const frontendUrl = process.env.FRONTEND_URL || 'https://themegaradio.com';
-    let callbackURL = process.env.GOOGLE_CALLBACK_URL || `${frontendUrl}/api/auth/google/callback`;
-    if (!process.env.GOOGLE_CALLBACK_URL && process.env.REPLIT_DOMAINS) {
-        const domains = process.env.REPLIT_DOMAINS.split(',').map(d => d.trim());
-        const replitDomain = domains.find(d => d.includes('.replit.app') || d.includes('.replit.dev'));
-        if (replitDomain) {
-            callbackURL = `https://${replitDomain}/api/auth/google/callback`;
-        }
-    }
+    const callbackURL = googleOAuthCallbackUrl();
     console.log('🔐 Google OAuth configured with callback URL:', callbackURL);
     passport.use(new GoogleStrategy({
         clientID: process.env.GOOGLE_CLIENT_ID,

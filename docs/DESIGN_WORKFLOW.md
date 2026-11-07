@@ -20,8 +20,8 @@ primitifleri, Lucide ikonları ve bazı Heroicons bileşenleri vardır.
 
 API, `artifacts/api-server` içindeki Express 5 uygulamasıdır. Güncel
 `src/index-api.ts`, `src/postgres-runtime.ts` ve `scripts/start-postgres.mjs`
-PostgreSQL kullanır. Eski `CLAUDE.md` / `replit.md` belgelerindeki MongoDB'nin ana
-veritabanı olduğu bilgisi bu commit için güncel değildir.
+PostgreSQL kullanır. Veritabanı yapılandırması için bu güncel başlangıç
+dosyaları esas alınır.
 
 `lib/db-shared` ortak tipleri/şemaları, `lib/seo-shared` yerelleştirilmiş SEO ve
 URL yardımcılarını, `lib/api-client-react` API istemcisini içerir. Investor deck

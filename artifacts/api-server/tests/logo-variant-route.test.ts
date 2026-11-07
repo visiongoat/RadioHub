@@ -14,7 +14,6 @@ mock.module('../src/services/precomputed-stations', { namedExports: { Precompute
 mock.module('../src/services/logo-processor', { namedExports: { logoProcessor: {} } });
 mock.module('../src/services/scheduled-logo-processor', { namedExports: { scheduledLogoProcessor: {} } });
 mock.module('../src/services/indexnow', { namedExports: { IndexNowService: {} } });
-mock.module('../src/objectStorage', { namedExports: { ObjectStorageService: class {} } });
 mock.module('../src/cache', { defaultExport: {} });
 const { registerLogoRoutes } = await import('../src/routes/logo-routes');
 let server: Server, base: string;

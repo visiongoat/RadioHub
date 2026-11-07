@@ -536,8 +536,7 @@ const DB_KEYS: Record<CommunityPageKind, { title: string; description: string }>
  * English `<title>` (the Site Audit duplicate-meta regression that
  * triggered this template).
  *
- * Defensive: enforces 145-char max on description per replit.md
- * META DESCRIPTION LENGTH RULE.
+ * Defensive: enforces a 145-character maximum description length.
  */
 export function buildCommunityPageSeo(
   pageType: CommunityPageKind,

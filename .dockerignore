@@ -6,8 +6,6 @@ node_modules
 *.md
 .env
 .env.*
-.replit
-replit.nix
 .config
 .cache
 .local
@@ -16,7 +14,6 @@ __pycache__
 *.log
 .vscode
 .idea
-.replit.nix
 .breakpoints
 generated-icon.png
 .migration-backup

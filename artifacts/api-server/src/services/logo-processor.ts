@@ -824,7 +824,7 @@ export class LogoProcessor {
       let response: any = null;
 
       for (let hop = 0; hop <= maxHops; hop++) {
-        // SSRF guard on EVERY hop (replit.md SSRF rule). Allow non-standard
+        // SSRF guard on EVERY hop. Allow non-standard
         // ports (many favicons live on :8443, :8000, :8080 …) but still block
         // internal-service ports + all private/metadata IPs — same policy the
         // stream proxy uses. Fixes false "port-not-allowed" logo failures.

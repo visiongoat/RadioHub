@@ -652,8 +652,7 @@ function clampGraphemes(text: string, maxChars: number): string {
  * English `<title>`. Mirrors the override pattern used by buildSearchSeo /
  * buildGenreSeo / buildCountrySeo.
  *
- * Defensive: enforces 145-char max on description per replit.md
- * META DESCRIPTION LENGTH RULE.
+ * Defensive: enforces a 145-character maximum description length.
  */
 export function buildLegalSeo(
   pageType: LegalPageKind,

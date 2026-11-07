@@ -477,7 +477,7 @@ function clampGraphemes(text: string, maxChars: number): string {
  * per-language template so we never serve a Turkish page with an English
  * `<title>`. Mirrors the override pattern used by buildGenreSeo / buildCountrySeo.
  *
- * Defensive: enforces 145-char max on description per replit.md META DESCRIPTION LENGTH RULE.
+ * Defensive: enforces a 145-character maximum description length.
  */
 export function buildSearchSeo(
   language: string,

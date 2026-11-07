@@ -29,6 +29,7 @@ mock.module('jose', { namedExports: { createRemoteJWKSet: () => ({}), jwtVerify:
 
 const oldFrontend = process.env.FRONTEND_URL;
 const oldSecret = process.env.SESSION_SECRET;
+const oldCallback = process.env.GOOGLE_CALLBACK_URL;
 const site = 'https://themegaradio.com';
 const secret = 'fixture-oauth-state-secret';
 let mode: 'success' | 'cancel' | 'error' = 'success';
@@ -69,8 +70,13 @@ after(async () => {
   await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   if (oldFrontend === undefined) delete process.env.FRONTEND_URL; else process.env.FRONTEND_URL = oldFrontend;
   if (oldSecret === undefined) delete process.env.SESSION_SECRET; else process.env.SESSION_SECRET = oldSecret;
+  if (oldCallback === undefined) delete process.env.GOOGLE_CALLBACK_URL; else process.env.GOOGLE_CALLBACK_URL = oldCallback;
 });
-beforeEach(() => { mode = 'success'; tokenFailure = false; });
+beforeEach(() => {
+  mode = 'success'; tokenFailure = false;
+  process.env.FRONTEND_URL = site;
+  delete process.env.GOOGLE_CALLBACK_URL;
+});
 async function request(path: string, returnTo?: string, body?: unknown) {
   const res = await fetch(base + path, {
     method: body ? 'POST' : 'GET', redirect: 'manual',
@@ -79,6 +85,19 @@ async function request(path: string, returnTo?: string, body?: unknown) {
   });
   return { res, url: new URL(res.headers.get('location') || '/', site) };
 }
+
+test('callback diagnostics use the configured OAuth target rather than incoming proxy hosts', async () => {
+  for (const callback of [undefined, 'https://api.example/api/auth/google/callback']) {
+    if (callback) process.env.GOOGLE_CALLBACK_URL = callback; else delete process.env.GOOGLE_CALLBACK_URL;
+    const response = await fetch(`${base}/api/auth/debug/callback-url`, { headers: { 'x-forwarded-host': 'untrusted.example' } });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    const expected = new URL(callback || `${site}/api/auth/google/callback`);
+    assert.equal(data.callbackUrl, expected.href);
+    assert.equal(data.currentDomain, expected.origin);
+    assert.deepEqual(data.allDomains, [expected.host]);
+  }
+});
 
 test('real Google and Apple entry routes reject an external-looking returnTo before session storage', async () => {
   await request('/api/auth/google?returnTo=' + encodeURIComponent('/\\outside.example'));

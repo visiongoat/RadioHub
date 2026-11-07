@@ -245,27 +245,20 @@
          dataLayer/gtag queues on the main thread. Partytown must not forward
          those queues to a second runtime. Only Clarity uses
          type="text/partytown"; AdSense + Cast SDK stay on the main
-         thread (see /replit.md "Performance optimization landmines").
+         thread for synchronous DOM access.
 
          IMPORTANT: Partytown spawns a same-origin sandboxed <iframe> to
-         host the Web Worker. Inside Replit's dev preview the page is
-         already iframed by Replit's proxy on a different origin, which
-         makes Partytown's frame access fail with "Blocked a frame with
-         origin ... from accessing a cross-origin frame". So we only
-         bootstrap Partytown on real production hostnames. On Replit
-         dev the analytics scripts (`type="text/partytown"`) will simply
-         be ignored by the browser — analytics keep working in prod and
-         dev preview is hassle-free. -->
+         host the Web Worker. Keep it disabled on local development hosts;
+         production analytics retain their existing worker setup. -->
     <script data-public-runtime>
       (function () {
         if (/^\/admin(?:\/|$|-login(?:\/|$))/.test(window.location.pathname)) return;
         var host = window.location.hostname || '';
-        var isReplitOrLocal =
-          host.indexOf('replit') !== -1 ||
+        var isLocal =
           host === 'localhost' ||
           host === '127.0.0.1' ||
           host === '0.0.0.0';
-        if (isReplitOrLocal) return;
+        if (isLocal) return;
         window.partytown = {
           forward: ['clarity']
         };

@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { partytownVite } from "@builder.io/partytown/utils";
 
 const rawPort = process.env.PORT;
@@ -30,7 +29,6 @@ export default defineConfig({
   base: basePath,
   plugins: [
     react(),
-    runtimeErrorOverlay(),
     // 2026-05-12 perf: copy Partytown's runtime library into
     // dist/public/~partytown so that the `<script type="text/partytown">`
     // tags in index.html (Microsoft Clarity) and the `script.type =
@@ -38,24 +36,10 @@ export default defineConfig({
     // off to a Web Worker instead of running on the main thread.
     //
     // SCOPE: Clarity + GA only. Google AdSense and the Cast SDK
-    // intentionally stay on the main thread — see the "Performance
-    // optimization landmines" section in /replit.md for why.
+    // intentionally stay on the main thread for their synchronous DOM access.
     partytownVite({
       dest: path.resolve(import.meta.dirname, "dist/public/~partytown"),
     }),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
   ],
   css: {
     postcss: {

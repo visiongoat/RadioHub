@@ -901,8 +901,7 @@ const DB_KEYS: Record<StaticPageKind, { title: string; description: string }> = 
  * Mirrors the override pattern used by buildLegalSeo / buildSearchSeo /
  * buildGenreSeo / buildCountrySeo.
  *
- * Defensive: enforces 145-char max on description per replit.md
- * META DESCRIPTION LENGTH RULE.
+ * Defensive: enforces a 145-character maximum description length.
  */
 export function buildStaticPageSeo(
   pageType: StaticPageKind,

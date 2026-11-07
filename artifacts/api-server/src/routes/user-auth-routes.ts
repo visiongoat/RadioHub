@@ -7,7 +7,7 @@ import { logger } from '../utils/logger';
 import { publicUserIdentity } from '../utils/public-user-identity';
 import { invalidateCommunityProfiles } from '../services/community-profiles';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
-import { safeOAuthReturnTo, resolveGoogleOAuthReturnTo, buildRedirectWithToken, buildOAuthFailureRedirect, buildGoogleSessionRedirect } from '../auth/oauth-redirect';
+import { googleOAuthCallbackUrl, safeOAuthReturnTo, resolveGoogleOAuthReturnTo, buildRedirectWithToken, buildOAuthFailureRedirect, buildGoogleSessionRedirect } from '../auth/oauth-redirect';
 // 2026-05-13 hotfix: `deps` (built in routes.ts) does NOT export CacheKeys
 // or CacheManager — three sites in this file used to do
 // `const { CacheKeys, CacheManager } = deps;` which threw at runtime
@@ -400,32 +400,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     });
     // Debug endpoint to show current callback URL for OAuth setup
     app.get("/api/auth/debug/callback-url", (req, res) => {
-        let baseUrl = 'http://localhost:3000';
-        if (process.env.REPLIT_DOMAINS) {
-            const domains = process.env.REPLIT_DOMAINS.split(',');
-            // Look for production domain (themegaradio.com only)
-            const productionDomain = domains.find(domain => domain.includes('themegaradio.com'));
-            if (productionDomain) {
-                baseUrl = `https://${productionDomain}`;
-            }
-            else {
-                // Look for deployed domain (.replit.app)
-                const deployedDomain = domains.find(domain => domain.includes('.replit.app'));
-                if (deployedDomain) {
-                    baseUrl = `https://${deployedDomain}`;
-                }
-                else {
-                    // Fallback to first domain (dev domain)
-                    baseUrl = `https://${domains[0]}`;
-                }
-            }
-        }
-        const callbackUrl = `${baseUrl}/api/auth/google/callback`;
+        const callbackUrl = googleOAuthCallbackUrl();
+        const baseUrl = new URL(callbackUrl).origin;
         res.json({
             message: 'Add this exact URL to your Google Cloud Console OAuth app as an authorized redirect URI',
             callbackUrl,
             currentDomain: baseUrl,
-            allDomains: process.env.REPLIT_DOMAINS?.split(',') || [],
+            allDomains: [new URL(callbackUrl).host],
             instructions: [
                 '1. Go to https://console.cloud.google.com/',
                 '2. Select your project',

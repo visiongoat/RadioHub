@@ -22,11 +22,9 @@ export class TranslationVersionService {
   static async bumpVersionViaApi(adminToken?: string): Promise<{ success: boolean; version: number }> {
     try {
       const port = process.env.PORT || '5000';
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.RAILWAY_PUBLIC_DOMAIN
-          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-          : `http://localhost:${port}`;
+      const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+        : `http://localhost:${port}`;
 
       const response = await fetch(`${baseUrl}/api/admin/translation-metadata/bump`, {
         method: 'POST',

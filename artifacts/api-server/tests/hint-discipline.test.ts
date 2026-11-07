@@ -12,8 +12,7 @@
  * for any `.hint(` call and fails the build if the comment is not
  * present in the immediately preceding 5 lines.
  *
- * The probe to verify a hint is documented in replit.md under
- * "Hint discipline".
+ * Verify the index exists in the active environment before adding a hint.
  */
 
 import { describe, it } from 'node:test';
@@ -69,8 +68,8 @@ describe('hint discipline (incident 2026-05-15 v10)', () => {
       violations.length,
       0,
       `Found ${violations.length} unverified .hint(...) call(s). Each must be preceded by a ` +
-        `\`// HINT-VERIFIED YYYY-MM-DD - <name>\` comment within the previous 5 lines (see replit.md ` +
-        `"Hint discipline" — incident 2026-05-15 v10).\n\nViolations:\n  ${violations.join('\n  ')}`
+        `\`// HINT-VERIFIED YYYY-MM-DD - <name>\` comment within the previous 5 lines ` +
+        `(incident 2026-05-15 v10).\n\nViolations:\n  ${violations.join('\n  ')}`
     );
   });
 });
