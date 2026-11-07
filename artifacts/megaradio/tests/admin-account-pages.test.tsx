@@ -262,3 +262,16 @@ it.each([['API keys', ApiKeys], ['IAP events', IapEvents]] as const)('returns to
   await waitFor(() => expect(fetchMock.mock.calls.some(call => String(call[0]).includes('page=1'))).toBe(true));
   expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
 });
+
+it('shows expired TV/admin access accurately while retaining historical purchase identifiers', async () => {
+  const user = { _id: 'expired-tv-user', fullName: 'Expired TV Demo', email: 'tv-fixture@example.invalid',
+    subscription: { plan: 'premium_monthly', platform: 'admin', isActive: true, expiresAt: '2020-01-01T00:00:00Z', productId: 'historical-lifetime', originalTransactionId: 'historical-transaction' } };
+  fetchMock.mockResolvedValue(Response.json({ users: [user], total: 1, totalPages: 1 }));
+  mount(AdminUsers);fireEvent.click(await screen.findByTitle('Edit user'));
+  const dialog=screen.getByRole('dialog');
+  expect(within(dialog).getByText('Effective access').parentElement).toHaveTextContent('No');
+  expect(within(dialog).getByText(/This is an admin entitlement/)).toHaveTextContent('not a verified store purchase');
+  expect(within(dialog).getByText('historical-transaction')).toBeTruthy();
+  expect(screen.getAllByText('Expired').length).toBeGreaterThan(0);
+  expect(within(dialog).getByRole('button',{name:'Cancel subscription'})).toBeDisabled();
+});

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/schema.ts",
+    "./subscription-access": "./src/subscription-access.ts"
   },
   "dependencies": {
     "zod": "catalog:"

@@ -1,3 +1,4 @@
+import { subscriptionAccess } from '@workspace/db-shared/subscription-access';
 import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -292,10 +293,10 @@ function matchesPlanFilter(
 ): boolean {
   if (filter === "all") return true;
   const plan = sub?.plan ?? "none";
-  const isActive = sub?.isActive === true;
+  const isActive = subscriptionAccess(sub).active;
   if (filter === "none") {
     // Treat inactive/cancelled subs as "no plan" too — matches the table's
-    // own rendering, which only shows a badge when sub.isActive && plan!=='none'.
+    // effective-access calculation, including expired or invalid dates.
     return !isActive || plan === "none";
   }
   if (!isActive) return false;
@@ -333,7 +334,7 @@ const PLAN_RANK: Record<string, number> = {
 
 function getPlanRank(user: UserProfile): number {
   const sub = user.subscription;
-  if (!sub || !sub.isActive || sub.plan === "none") return 0;
+  if (!sub || !subscriptionAccess(sub).active) return 0;
   return PLAN_RANK[sub.plan] ?? 0;
 }
 
@@ -641,7 +642,7 @@ export default function AdminUsers() {
         email: u.email,
         auth_method: (u.authProvider || "email").toLowerCase(),
         plan: sub?.plan ?? "none",
-        plan_active: sub?.isActive === true,
+        plan_active: subscriptionAccess(sub).active,
         expires_at: parseDate(sub?.expiresAt ?? undefined),
         followers: u.followers ?? 0,
         favorites: u.favorites ?? 0,
@@ -835,7 +836,10 @@ export default function AdminUsers() {
   };
 
   const getSubscriptionBadge = (sub?: UserSubscription | null) => {
-    if (!sub || !sub.isActive || sub.plan === 'none') return null;
+    const access = subscriptionAccess(sub);
+    if (access.status === 'expired') return <Badge className="bg-gray-100 text-gray-700 border text-xs">Expired</Badge>;
+    if (access.status === 'invalid_expiry') return <Badge className="bg-amber-100 text-amber-800 border text-xs">Missing or invalid expiry</Badge>;
+    if (!sub || !access.active) return null;
     const colors: Record<string, string> = {
       remove_ads: "bg-blue-100 text-blue-800 border-blue-300",
       premium_monthly: "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -1527,9 +1531,9 @@ export default function AdminUsers() {
                       <p className="font-medium text-gray-900">{editUser?.subscription?.plan || "none"}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Active</span>
-                      <p className={`font-medium ${editUser?.subscription?.isActive ? "text-green-700" : "text-red-700"}`}>
-                        {editUser?.subscription?.isActive ? "Yes" : "No"}
+                      <span className="text-gray-500">Effective access</span>
+                      <p className={`font-medium ${subscriptionAccess(editUser?.subscription).active ? "text-green-700" : "text-red-700"}`}>
+                        {subscriptionAccess(editUser?.subscription).active ? "Yes" : "No"}
                       </p>
                     </div>
                     <div>
@@ -1579,6 +1583,10 @@ export default function AdminUsers() {
                   </div>
                 </div>
 
+                {editUser?.subscription?.platform === 'admin' && (
+                  <p className="text-xs text-gray-600">This is an admin entitlement, not a verified store purchase. Product and transaction identifiers above are retained billing history and may refer to an earlier plan.</p>
+                )}
+
                 {/* Admin Overrides — bypass Apple/Google. Sets platform='admin' on the server. */}
                 <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Admin Overrides</h3>
@@ -1590,7 +1598,7 @@ export default function AdminUsers() {
                       <label className="block text-xs font-medium text-gray-700 mb-1">Plan</label>
                       <select
                         value={subPlanDraft}
-                        onChange={(e) => setSubPlanDraft(e.target.value)}
+                        onChange={(e) => { setSubPlanDraft(e.target.value); if (e.target.value === 'premium_lifetime') setSubExpiresDraft(''); }}
                         className="w-full bg-white text-gray-900 border border-gray-300 rounded px-2 py-1.5 text-sm"
                       >
                         <option value="none">none (no plan)</option>
@@ -1601,9 +1609,10 @@ export default function AdminUsers() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Expires (optional)</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Expires (required for time-limited plans)</label>
                       <Input
                         type="date"
+                        disabled={subPlanDraft === 'premium_lifetime' || subPlanDraft === 'none'}
                         value={subExpiresDraft}
                         onChange={(e) => setSubExpiresDraft(e.target.value)}
                         className="bg-white text-gray-900 border-gray-300 text-sm"
@@ -1620,7 +1629,7 @@ export default function AdminUsers() {
                           expiresAt: subExpiresDraft ? new Date(subExpiresDraft).toISOString() : null,
                         })
                       }
-                      disabled={accountBusy || !!subExpiresDraft && !isCalendarDate(subExpiresDraft)}
+                      disabled={accountBusy || !['none', 'premium_lifetime'].includes(subPlanDraft) && (!subExpiresDraft || !isCalendarDate(subExpiresDraft))}
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                     >
                       {updateSubMutation.isPending ? <Loader2 className="mr-1 animate-spin" size={14} /> : null}
@@ -1648,7 +1657,7 @@ export default function AdminUsers() {
                           cancelSubMutation.mutate(editingUserId);
                         }
                       }}
-                      disabled={accountBusy || !editUser?.subscription?.isActive}
+                      disabled={accountBusy || !subscriptionAccess(editUser?.subscription).active}
                       className="bg-white text-red-700 border-red-300 hover:bg-red-50 disabled:opacity-50"
                     >
                       <Ban size={14} className="mr-1" />

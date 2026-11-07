@@ -1,3 +1,5 @@
+import { subscriptionAccess } from '@workspace/db-shared/subscription-access';
+import { adminSubscriptionPatch } from '../utils/admin-subscription-patch';
 import type { Express } from "express";
 import { socialLinkInput } from '../admin-social-link-input';
 import {
@@ -322,7 +324,7 @@ export function registerMiscRoutes(
                 user.email,
                 (user.authProvider || "email").toLowerCase(),
                 sub?.plan ?? "none",
-                sub?.isActive === true ? "true" : "false",
+                subscriptionAccess(sub).active ? "true" : "false",
                 csvDate(sub?.expiresAt),
                 user.followersCount ?? 0,
                 user.favoriteCount ?? 0,
@@ -738,40 +740,14 @@ export function registerMiscRoutes(
       const user: any = await pgFindUserById(userId);
       if (!user) return void res.status(404).json({ error: "User not found" });
       const sub = await pgGetSubscription(userId);
-      if (!sub || sub.plan === "none") {
-        return void res.json({
-          plan: "none",
-          expiryDate: null,
-          isActive: false,
-          features: [],
-        });
-      }
-      if (
-        sub.plan !== "premium_lifetime" &&
-        sub.expiresAt &&
-        new Date(sub.expiresAt) < new Date() &&
-        sub.isActive
-      ) {
-        const expiryPatch = {
-          "subscription.isActive": false,
-          "subscription.plan": "none",
-        };
-        {
-          await pgUpsertSubscription(userId, subscriptionPatch(expiryPatch));
-        }
-        return void res.json({
-          plan: "none",
-          expiryDate: null,
-          isActive: false,
-          features: [],
-          expired: true,
-        });
-      }
+      // Checking access must not erase the original plan or provider history.
+      const access = subscriptionAccess(sub);
       res.json({
-        plan: sub.plan,
-        expiryDate: sub.expiresAt || null,
-        isActive: sub.isActive,
-        features: PLAN_FEATURES[sub.plan as PremiumPlan] || [],
+        plan: access.active ? sub!.plan : "none",
+        expiryDate: access.active ? sub!.expiresAt || null : null,
+        isActive: access.active,
+        features: access.active ? PLAN_FEATURES[sub!.plan as PremiumPlan] || [] : [],
+        ...(access.expired ? { expired: true } : {}),
       });
     } catch (error: any) {
       console.error("Subscription fetch error:", error.message);
@@ -837,44 +813,16 @@ export function registerMiscRoutes(
     requireAdmin,
     async (req, res) => {
       try {
-        const { plan, isActive, expiresAt } = req.body;
-        const updateData: any = {
-          "subscription.lastVerifiedAt": new Date(),
-          "subscription.platform": "admin",
-        };
-        if (plan) {
-          if (!VALID_PLANS.includes(plan)) {
-            return void res
-              .status(400)
-              .json({
-                error: `plan must be one of: ${VALID_PLANS.join(", ")}`,
-              });
-          }
-          updateData["subscription.plan"] = plan;
-          updateData["subscription.isActive"] = plan !== "none";
-        }
-        if (typeof isActive === "boolean")
-          updateData["subscription.isActive"] = isActive;
-        if (expiresAt !== undefined) {
-          if (expiresAt === null) {
-            updateData["subscription.expiresAt"] = null;
-          } else {
-            const parsed = new Date(expiresAt);
-            if (isNaN(parsed.getTime())) {
-              return void res
-                .status(400)
-                .json({ error: "expiresAt must be a valid date or null" });
-            }
-            updateData["subscription.expiresAt"] = parsed;
-          }
-        }
-        if (!expiresAt && plan)
-          updateData["subscription.startedAt"] = new Date();
+        const identityBefore = await pgFindUserById(req.params.id);
+        if (!identityBefore) return void res.status(404).json({ error: "User not found" });
+        const existing = await pgGetSubscription(req.params.id);
+        const update = adminSubscriptionPatch(req.body, existing);
+        if (update.error) return void res.status(400).json({ error: update.error });
         let user: any;
         {
           await pgUpsertSubscription(
             req.params.id,
-            subscriptionPatch(updateData),
+            update.patch!,
           );
           const identity = await pgFindUserById(req.params.id);
           const subscription = await pgGetSubscription(req.params.id);
@@ -882,7 +830,7 @@ export function registerMiscRoutes(
         }
         if (!user)
           return void res.status(404).json({ error: "User not found" });
-        const activePlan = (user.subscription?.plan as PremiumPlan) || "none";
+        const activePlan = subscriptionAccess(user.subscription).active ? user.subscription.plan as PremiumPlan : "none";
         res.json({
           success: true,
           user: {
