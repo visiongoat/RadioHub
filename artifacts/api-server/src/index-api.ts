@@ -1,3 +1,4 @@
+import { applyPublicCatalogCors } from "./lib/public-catalog-cors";
 if (!process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_FILE === '/dev/null') {
   process.env.FONTCONFIG_FILE = process.cwd() + '/fontconfig.conf';
 }
@@ -286,13 +287,11 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', origin!);
     res.header('Access-Control-Allow-Credentials', 'true');
   }
-  // Note: do NOT emit '*' for unknown origins when credentials are in play —
-  // browsers reject 'ACAO: *' on credentialed requests anyway, and emitting
-  // it just hides real misconfigurations.
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-API-Key, X-API-User-Token, X-MegaRadio-Platform');
   res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
   res.header('Access-Control-Max-Age', '86400');
+  if (!isAllowed) applyPublicCatalogCors(req, res);
 
   res.header('X-Content-Type-Options', 'nosniff');
   // SEO: API responses are JSON and must NEVER be indexed even if a stray
