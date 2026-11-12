@@ -8,7 +8,7 @@ export default function HomeStationGuide() {
   if (!guide) return null;
 
   return (
-    <section className="container relative pt-8 pb-4 text-white" lang="en"
+    <section className="container relative pt-8 pb-4 text-white" lang={currentLanguage}
       aria-labelledby="home-station-guide-title" data-testid="home-station-guide">
       <h2 id="home-station-guide-title" className="section-header pb-4">{guide.heading}</h2>
       <p className="max-w-3xl text-sm leading-relaxed text-gray-400 md:text-base">{guide.description}</p>

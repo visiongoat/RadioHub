@@ -30,9 +30,11 @@ for (const language of ['en', 'de', 'tr', 'es', 'fr', 'pt', 'it', 'ru', 'ar', 'z
     });
     assert.ok(body.includes(fragment));
     const guide = renderHomeStationGuideBody(language);
-    if (language === 'en') {
+    if (language === 'en' || language === 'fr') {
       assert.ok(body.includes(guide));
-      assert.equal((body.match(/href="\/de\/sender\/orf-hitradio-o3"/g) || []).length, 1);
+      const pilotPath = language === 'en' ? '/de/sender/orf-hitradio-o3' : '/fr/station/radio-couleur-chartreuse';
+      assert.equal(body.split(`href="${pilotPath}"`).length - 1, 1);
+      assert.ok(guide.includes(`lang="${language}"`));
       assert.ok(body.indexOf(guide) < body.indexOf(fragment));
     } else {
       assert.equal(guide, '');

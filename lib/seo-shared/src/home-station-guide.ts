@@ -6,6 +6,16 @@ export const HOME_STATION_GUIDE = {
   language: 'de',
 } as const;
 
+export const FRENCH_HOME_STATION_GUIDE = {
+  heading: 'Découvrir Radio Couleur Chartreuse',
+  description: 'Une radio associative du massif de la Chartreuse : découvrez son histoire, ses reportages locaux, ses chroniques littéraires et les liens pour retrouver les émissions.',
+  label: 'Radio Couleur Chartreuse : écouter le direct et découvrir la radio',
+  href: '/fr/station/radio-couleur-chartreuse',
+  language: 'fr',
+} as const;
+
 export function getHomeStationGuide(language: string) {
-  return language === 'en' ? HOME_STATION_GUIDE : null;
+  if (language === 'en') return HOME_STATION_GUIDE;
+  if (language === 'fr') return FRENCH_HOME_STATION_GUIDE;
+  return null;
 }
