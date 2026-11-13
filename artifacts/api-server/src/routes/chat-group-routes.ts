@@ -1,3 +1,4 @@
+import {setChatReaction,validChatReaction} from '../data/chat-reactions';
 import type {Express,RequestHandler} from 'express';
 import {rateLimit} from 'express-rate-limit';
 import {getPostgresPool} from '../postgres-runtime';
@@ -28,7 +29,7 @@ export function groupInput(body:any,actor:string,allowed:ReadonlySet<string>=gro
 }
 const fail=(status:number,message:string)=>Object.assign(Error(message),{status});
 const profile=`jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl')`;
-const messageSelect=(viewer='$2',joined='$3')=>`SELECT m.id AS "_id",m.group_id AS "groupId",m.from_user_id AS "fromUserId",m.content,m.message_type AS "messageType",m.image_url AS "imageUrl",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",m.hidden_for AS "hiddenFor",m.pinned_at AS "pinnedAt",m.updated_at AS "pinUpdatedAt",m.reply_to_id AS "replyToId",
+const messageSelect=(viewer='$2',joined='$3')=>`SELECT m.id AS "_id",m.group_id AS "groupId",m.from_user_id AS "fromUserId",m.content,m.message_type AS "messageType",m.image_url AS "imageUrl",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",m.hidden_for AS "hiddenFor",m.pinned_at AS "pinnedAt",m.updated_at AS "pinUpdatedAt",m.reply_to_id AS "replyToId",CASE WHEN m.deleted_at IS NULL THEN m.reactions ELSE '[]'::jsonb END AS reactions,m.reactions_revision::int AS "reactionsRevision",
  (SELECT jsonb_build_object('_id',r.id,'fromUserId',r.from_user_id,'content',CASE WHEN r.deleted_at IS NULL THEN r.content ELSE '' END,'messageType',r.message_type,'deletedAt',r.deleted_at) FROM chat_group_messages r WHERE r.id=m.reply_to_id AND r.group_id=m.group_id AND r.created_at>=${joined} AND NOT (${viewer}=ANY(r.hidden_for))) AS "replyTo",${profile} AS sender FROM chat_group_messages m JOIN users u ON u.id=m.from_user_id`;
 
 export function registerChatGroupRoutes(app:Express,requireAuth:RequestHandler){
@@ -87,9 +88,18 @@ export function registerChatGroupRoutes(app:Express,requireAuth:RequestHandler){
  register('post','/:id/delete',async(db,actor,req)=>{
   const g=await member(db,actor,req.params.id),{messageId,scope}=req.body||{};if(!['self','everyone'].includes(scope))throw fail(400,'Invalid deletion scope');
   const row=await readable(db,g,actor,messageId);if(scope==='everyone'&&row.from_user_id!==actor)throw fail(403,'Only the sender can delete for everyone');
+  if(scope==='everyone'&&!row.deleted_at&&(!Number.isFinite(new Date(row.created_at).getTime())||Date.now()-new Date(row.created_at).getTime()>=48*60*60*1000))throw fail(409,'Delete for everyone is available for 48 hours');
   if(scope==='self')await db.query('UPDATE chat_group_messages SET hidden_for=array_append(hidden_for,$2) WHERE id=$1',[messageId,actor]);
-  else await db.query("UPDATE chat_group_messages SET deleted_at=COALESCE(deleted_at,now()),content='',image_url=NULL,message_type='text',reply_to_id=NULL,pinned_at=NULL,updated_at=now() WHERE id=$1",[messageId]);
+  else {const deleted=await db.query("UPDATE chat_group_messages SET deleted_at=COALESCE(deleted_at,now()),content='',image_url=NULL,message_type='text',reply_to_id=NULL,pinned_at=NULL,updated_at=now() WHERE id=$1 AND (deleted_at IS NOT NULL OR created_at>statement_timestamp()-interval '48 hours') RETURNING id",[messageId]);if(!deleted.rows.length)throw fail(409,'Delete for everyone is available for 48 hours');}
   return {data:{success:true},groupId:g.id,notify:scope==='self'?[actor]:await activeAudience(db,g.id),change:{messageId,scope,userId:actor,deletedAt:scope==='everyone'?row.deleted_at||new Date().toISOString():undefined}};
+ });
+ register('post','/:id/react',async(db,actor,req)=>{
+  const g=await member(db,actor,req.params.id),{messageId,emoji}=req.body||{};
+  if(!validChatReaction(emoji))throw fail(400,'Invalid reaction');
+  const original=await readable(db,g,actor,messageId);if(original.deleted_at)throw fail(404,'Message unavailable');
+  const row=await setChatReaction(db,'group',messageId,actor,emoji,g.id);if(!row)throw fail(404,'Message unavailable');
+  const message=(await db.query(messageSelect()+' WHERE m.id=$1',[messageId,actor,g.joined_at])).rows[0];
+  return {data:{message},groupId:g.id,notify:await activeAudience(db,g.id),change:{messageId,reactions:message.reactions,reactionsRevision:message.reactionsRevision}};
  });
  register('post','/:id/pin',async(db,actor,req)=>{
   const g=await member(db,actor,req.params.id),{messageId,pinned}=req.body||{};if(typeof pinned!=='boolean')throw fail(400,'Invalid pin');

@@ -17,3 +17,5 @@ test('reply pages resolve original content without storing stale quote snapshots
  await store.pgConversationMessages('recipient','sender',undefined,51);const q=queries.at(-1)!;
  assert.match(q.sql,/r.id=m.reply_to_id/);assert.match(q.sql,/CASE WHEN r.deleted_at IS NULL THEN r.content ELSE '' END/);assert.match(q.sql,/NOT \(\$1=ANY\(r.hidden_for\)\)/);
 });
+
+test('recall deadline is atomic and uses database time rather than the client clock',async()=>{await store.pgDeleteChatMessage('sender','message','everyone');assert.match(queries.at(-1)!.sql,/created_at>statement_timestamp\(\)-interval '48 hours'/);await store.pgDeleteChatMessage('recipient','message','self');assert.doesNotMatch(queries.at(-1)!.sql,/48 hours/);});

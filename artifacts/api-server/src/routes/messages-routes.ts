@@ -1,3 +1,4 @@
+import {setChatReaction,validChatReaction} from '../data/chat-reactions';
 import {registerChatInboxRoutes} from './chat-inbox-routes';
 import {getPostgresPool} from '../postgres-runtime';
 import {registerChatGroupRoutes} from './chat-group-routes';
@@ -305,6 +306,18 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             res.status(500).json({ error: "Upload failed" });
         }
     });
+    app.post('/api/messages/react',requireAuth,messageSendLimiter,async(req,res)=>{
+      try{
+        const actor=getSessionUserId(req);if(!actor)return void res.status(401).json({error:'Not authenticated'});
+        const {messageId,emoji}=req.body||{};
+        if(typeof messageId!=='string'||!/^[a-f0-9]{24}$/i.test(messageId)||!validChatReaction(emoji))return void res.status(400).json({error:'Invalid reaction request'});
+        const row=await setChatReaction(getPostgresPool(),'direct',messageId.toLowerCase(),actor,emoji);
+        if(!row)return void res.status(404).json({error:'Message unavailable'});
+        const message=await pgChatMessageById(row.id);if(!message)return void res.status(404).json({error:'Message unavailable'});
+        chatService.broadcastToUsers([message.fromUserId,message.toUserId],{type:'chat:reaction',message});
+        res.setHeader('Cache-Control','private, no-store');res.json({message});
+      }catch(error){logger.error('Chat reaction failed:',error);res.status(500).json({error:'Unable to react to message'});}
+    });
     app.post('/api/messages/pin',requireAuth,messageSendLimiter,async(req,res)=>{
       try{
         const userId=getSessionUserId(req);if(!userId)return void res.status(401).json({error:'Not authenticated'});
@@ -323,7 +336,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         const id=messageId.toLowerCase(),message=await pgChatMessageById(id);
         if(!message||![message.fromUserId,message.toUserId].includes(userId))return void res.status(404).json({error:'Message not found'});
         if(scope==='everyone'&&message.fromUserId!==userId)return void res.status(403).json({error:'Only the sender can delete for everyone'});
-        const deleted=await pgDeleteChatMessage(userId,id,scope);if(!deleted)return void res.status(404).json({error:'Message not found'});
+        if(scope==='everyone'&&!message.deletedAt&&(!Number.isFinite(new Date(message.createdAt).getTime())||Date.now()-new Date(message.createdAt).getTime()>=48*60*60*1000))return void res.status(409).json({error:'Delete for everyone is available for 48 hours',code:'DELETE_WINDOW_EXPIRED'});
+        const deleted=await pgDeleteChatMessage(userId,id,scope);if(!deleted)return void res.status(scope==='everyone'?409:404).json({error:scope==='everyone'?'Deletion window expired':'Message not found',...(scope==='everyone'?{code:'DELETE_WINDOW_EXPIRED'}:{})});
         chatListening.removeMessage(id,scope==='everyone'?[message.fromUserId,message.toUserId]:[userId]);
         await markConversationNotificationsRead(scope==='everyone'?message.toUserId:userId,scope==='everyone'?message.fromUserId:message.fromUserId===userId?message.toUserId:message.fromUserId);
         const payload={type:'chat:deleted',messageId:id,scope,fromUserId:message.fromUserId,toUserId:message.toUserId,deletedAt:deleted.deletedAt};
