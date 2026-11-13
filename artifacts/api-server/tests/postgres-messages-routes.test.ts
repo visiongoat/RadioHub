@@ -30,6 +30,7 @@ let connectionHandler: (...args: any[]) => any;
 let requestedLimit: number;
 let follows = true;
 let hasHistory = false;
+let deletionCreatedAt=()=>new Date(Date.now()-60000).toISOString();
 
 mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{namedExports:{getPublicStationByIdentifier:async(id:string)=>id.endsWith('999')?null:{_id:id,name:'Canonical Radio',country:'Austria',favicon:'https://example.test/logo.png'}}});
 mock.module("express-rate-limit", {
@@ -76,7 +77,7 @@ mock.module(new URL("../src/data/postgres-message-store.ts", import.meta.url).hr
     pgUnreadMessageCount: async () => 0,
     pgHasConversation: async () => hasHistory,
     pgDeleteChatMessage: async(...args:any[])=>{deletionCalls.push(args);return {deletedAt:args[2]==='everyone'?'2026-11-09T12:00:00Z':null};},
-    pgChatMessageById: async(id:string) => id.endsWith('998')?{_id:id,fromUserId:partnerId,toUserId:userId,messageType:'text'}: id.endsWith('999')?{_id:id,fromUserId:'other',toUserId:'unrelated',messageType:'station'}:{_id:id,fromUserId:userId,toUserId:partnerId,messageType:'station'},
+    pgChatMessageById: async(id:string) => id.endsWith('998')?{_id:id,fromUserId:partnerId,toUserId:userId,messageType:'text'}: id.endsWith('999')?{_id:id,fromUserId:'other',toUserId:'unrelated',messageType:'station'}:{_id:id,fromUserId:userId,toUserId:partnerId,messageType:'station',createdAt:deletionCreatedAt()},
   },
 });
 mock.module(new URL("../src/data/postgres-notification-store.ts", import.meta.url).href, {
@@ -283,6 +284,11 @@ test('message deletion is participant scoped, sender-only for everyone and broad
  assert.equal((await post(incoming,'self')).status,200);assert.deepEqual(broadcasts.at(-1)?.userIds,[userId]);
 });
 
+test('recall rejects messages older than 48 hours without mutation or broadcast; self delete remains available',async()=>{
+ const id='507f1f77bcf86cd799439014',post=(scope:string)=>fetch(baseUrl+'/api/messages/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({messageId:id,scope})});
+ deletionCreatedAt=()=>new Date(Date.now()-48*60*60*1000-1).toISOString();
+ try {const calls=deletionCalls.length,events=broadcasts.length,response=await post('everyone');assert.equal(response.status,409);assert.equal((await response.json()).code,'DELETE_WINDOW_EXPIRED');assert.equal(deletionCalls.length,calls);assert.equal(broadcasts.length,events);assert.equal((await post('self')).status,200);}finally{deletionCreatedAt=()=>new Date(Date.now()-60000).toISOString();}
+});
 test('pin and reply endpoints reject invalid IDs and references outside the conversation',async()=>{
  follows=true;hasHistory=true;
  const post=(path:string,body:any)=>fetch(baseUrl+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});

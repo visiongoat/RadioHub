@@ -10,7 +10,7 @@ const db={release(){},async query(sql:string,args:any[]=[]){queries.push({sql,ar
  else if(sql.includes('AS user,m.role,m.status'))rows=listedMembers;
  else if(sql.startsWith('SELECT * FROM chat_group_messages WHERE id=$1'))rows=messageRow&&messageRow.id===args[0]&&messageRow.group_id===args[1]&&Date.parse(messageRow.created_at)>=Date.parse(args[2])&&!messageRow.hidden_for.includes(args[3])?[messageRow]:[];
  else if(sql.startsWith('UPDATE chat_group_messages SET hidden_for=')){messageRow.hidden_for.push(args[1]);}
- else if(sql.startsWith('UPDATE chat_group_messages SET deleted_at=')){messageRow.deleted_at=new Date().toISOString();messageRow.content='';messageRow.image_url=null;messageRow.pinned_at=null;}
+ else if(sql.startsWith('UPDATE chat_group_messages SET deleted_at=')){messageRow.deleted_at=new Date().toISOString();messageRow.content='';messageRow.image_url=null;messageRow.pinned_at=null;rows=[{id:messageRow.id}];}
  else if(sql.startsWith('UPDATE chat_group_messages SET pinned_at=')){messageRow.pinned_at=args[1]?new Date().toISOString():null;}
  else if(sql.includes('UPDATE chat_group_members SET role=$3'))rows=targetActive?[{user_id:peer}]:[];
  else if(sql.includes('SELECT u.id FROM users'))rows=eligible?[{id:peer}]:[];
@@ -109,11 +109,17 @@ test('only active group members publish canonical expiring listening presence',a
 });
 
 const actionId='507f1f77bcf86cd799439030';
-const resetMessage=()=>{allow=true;status='active';actorRole='member';messageRow={id:actionId,group_id:group,from_user_id:actor,content:'Hello',created_at:'2026-11-10T12:00:00Z',hidden_for:[],deleted_at:null,pinned_at:null};};
+const resetMessage=()=>{allow=true;status='active';actorRole='member';messageRow={id:actionId,group_id:group,from_user_id:actor,content:'Hello',created_at:new Date(Date.now()-60000).toISOString(),hidden_for:[],deleted_at:null,pinned_at:null};};
 test('group message deletion uses personal hiding and sender-only everyone deletion',async()=>{
  resetMessage();messageRow.from_user_id=peer;assert.equal((await post('/'+group+'/delete',{messageId:actionId,scope:'everyone'})).status,403);
  const eventCount=events.length;assert.equal((await post('/'+group+'/delete',{messageId:actionId,scope:'self'})).status,200);assert.deepEqual(messageRow.hidden_for,[actor]);assert.ok(events.slice(eventCount).every(event=>event.ids.length===1&&event.ids[0]===actor),'personal deletion is not sent to peers');
  resetMessage();assert.equal((await post('/'+group+'/delete',{messageId:actionId,scope:'everyone'})).status,200);assert.ok(messageRow.deleted_at);assert.equal(messageRow.content,'');assert.equal(messageRow.pinned_at,null);
+});
+test('group recall expires after 48 hours but personal hiding remains available',async()=>{
+ resetMessage();messageRow.created_at=new Date(Date.now()-48*60*60*1000-1).toISOString();const before=events.length;
+ assert.equal((await post('/'+group+'/delete',{messageId:actionId,scope:'everyone'})).status,409);assert.equal(events.length,before);assert.equal(messageRow.content,'Hello');
+ assert.equal((await post('/'+group+'/delete',{messageId:actionId,scope:'self'})).status,200);
+ resetMessage();await post('/'+group+'/delete',{messageId:actionId,scope:'everyone'});assert.match(queries.findLast(q=>q.sql.startsWith('UPDATE chat_group_messages SET deleted_at='))!.sql,/created_at>statement_timestamp\(\)-interval '48 hours'/);
 });
 test('reply, pin and delete cannot target another group, hidden messages or pre-join history',async()=>{
  for(const change of [{group_id:peer},{created_at:'2020-01-01T00:00:00Z'},{hidden_for:[actor]}]){

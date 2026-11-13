@@ -6,6 +6,7 @@ export const messageStore: string = "postgres";
 function shape(row: any): any {
   return {
     _id: row.id, fromUserId: row.from_user_id, toUserId: row.to_user_id,
+    reactions:row.deleted_at?[]:row.reactions||[],reactionsRevision:Number(row.reactions_revision||0),
     content: row.content, messageType: row.message_type, imageUrl: row.image_url,
     replyToId:row.reply_to_id||null, ...(row.reply_to?{replyTo:row.reply_to}:{}), pinnedAt:row.pinned_at||null,pinUpdatedAt:row.updated_at, deletedAt:row.deleted_at||null, read: row.is_read, readAt: row.read_at, createdAt: row.created_at, updatedAt: row.updated_at,
   };
@@ -124,7 +125,7 @@ export async function pgChatMessageById(id:string):Promise<any|null>{
 
 export async function pgDeleteChatMessage(userId:string,id:string,scope:'self'|'everyone'):Promise<any|null>{
  const result=scope==='everyone'
- ?await getPostgresPool().query(`UPDATE direct_messages SET content='',image_url=NULL,message_type='text',deleted_at=COALESCE(deleted_at,now()),updated_at=now() WHERE id=$1 AND from_user_id=$2 RETURNING *`,[id,userId])
+ ?await getPostgresPool().query(`UPDATE direct_messages SET content='',image_url=NULL,message_type='text',deleted_at=COALESCE(deleted_at,now()),updated_at=now() WHERE id=$1 AND from_user_id=$2 AND (deleted_at IS NOT NULL OR created_at>statement_timestamp()-interval '48 hours') RETURNING *`,[id,userId])
  :await getPostgresPool().query(`UPDATE direct_messages SET hidden_for=CASE WHEN $2=ANY(hidden_for) THEN hidden_for ELSE array_append(hidden_for,$2) END WHERE id=$1 AND (from_user_id=$2 OR to_user_id=$2) RETURNING *`,[id,userId]);
  return result.rows[0]?shape(result.rows[0]):null;
 }

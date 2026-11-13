@@ -22,7 +22,8 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   const url=new URL(connectionString!);assert.ok(['127.0.0.1','localhost','[::1]'].includes(url.hostname),'integration fixtures require a local test database');
   admin=new pg.Pool({connectionString});await admin.query(`CREATE SCHEMA "${schema}"`);url.searchParams.set('options',`-c search_path=${schema},public`);pool=new pg.Pool({connectionString:url.toString()});
   await pool.query("CREATE TABLE users(id text PRIMARY KEY,full_name text,username text,avatar text,source jsonb DEFAULT '{}')");
-  for(const file of ['0046_chat_groups.sql','0047_chat_group_music_styles.sql','0048_chat_group_message_actions.sql','0049_chat_inbox_actions.sql'])await pool.query(await readFile(new URL('../../../lib/db/migrations/'+file,import.meta.url),'utf8'));
+  await pool.query('CREATE TABLE direct_messages(id text PRIMARY KEY)');
+  for(const file of ['0046_chat_groups.sql','0047_chat_group_music_styles.sql','0048_chat_group_message_actions.sql','0049_chat_inbox_actions.sql','0053_chat_message_reactions.sql'])await pool.query(await readFile(new URL('../../../lib/db/migrations/'+file,import.meta.url),'utf8'));
   await pool.query("INSERT INTO users(id,full_name) VALUES($1,'Owner'),($2,'Peer')",[owner,peer]);
   await pool.query("INSERT INTO chat_groups(id,name,created_by) VALUES($1,'Group',$3),($2,'Other',$3)",[group,otherGroup,owner]);
   await pool.query("INSERT INTO chat_group_members(group_id,user_id,status,joined_at) VALUES($1,$2,'active','2026-01-01'),($1,$3,'active','2026-01-01')",[group,owner,peer]);
@@ -31,6 +32,19 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
  after(async()=>{if(server)await new Promise<void>(resolve=>server.close(()=>resolve()));await pool?.end();if(admin){await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await admin.end();}});
  const post=async(path:string,body:any,user=owner)=>{const response=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json','x-test-user':user},body:JSON.stringify(body)});return {status:response.status,body:await response.json() as any};};
  const history=async(user=owner)=>await (await fetch(base+'/messages',{headers:{'x-test-user':user}})).json() as any;
+ it('persists concurrent reactions and rejects hidden or deleted messages',async()=>{
+  const sent=await post('/messages',{content:'Reaction integration'});assert.equal(sent.status,200);const messageId=sent.body.message._id;
+  const updates=await Promise.all([post('/react',{messageId,emoji:'❤️'}),post('/react',{messageId,emoji:'👍'},peer)]);
+  assert.ok(updates.every(result=>result.status===200));
+  let saved=(await history()).messages.find((message:any)=>message._id===messageId);
+  assert.equal(saved.reactions.length,2);assert.equal(saved.reactionsRevision,2);
+  const changed=await post('/react',{messageId,emoji:'😂'});assert.equal(changed.status,200);assert.equal(changed.body.message.reactions.length,2);
+  assert.equal(changed.body.message.reactions.find((item:any)=>item.userId===owner).emoji,'😂');
+  const removed=await post('/react',{messageId,emoji:null});assert.equal(removed.status,200);assert.deepEqual(removed.body.message.reactions.map((item:any)=>item.userId),[peer]);
+  assert.equal((await post('/delete',{messageId,scope:'self'},peer)).status,200);assert.equal((await post('/react',{messageId,emoji:'❤️'},peer)).status,404);
+  assert.equal((await post('/delete',{messageId,scope:'everyone'})).status,200);assert.equal((await post('/react',{messageId,emoji:'❤️'})).status,404);
+  await pool.query('DELETE FROM chat_group_messages WHERE id=$1',[messageId]);
+ });
  it('persists replies and pins, hides personally, redacts everyone and enforces group/join boundaries',async()=>{
   const sent=await post('/messages',{content:'Original'});assert.equal(sent.status,200);const id=sent.body.message._id;
   const reply=await post('/messages',{content:'Reply',replyToId:id},peer);assert.equal(reply.status,200);assert.equal(reply.body.message.replyTo.content,'Original');
