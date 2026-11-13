@@ -43,6 +43,7 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   const removed=await post('/react',{messageId,emoji:null});assert.equal(removed.status,200);assert.deepEqual(removed.body.message.reactions.map((item:any)=>item.userId),[peer]);
   assert.equal((await post('/delete',{messageId,scope:'self'},peer)).status,200);assert.equal((await post('/react',{messageId,emoji:'❤️'},peer)).status,404);
   assert.equal((await post('/delete',{messageId,scope:'everyone'})).status,200);assert.equal((await post('/react',{messageId,emoji:'❤️'})).status,404);
+  await pool.query('DELETE FROM chat_group_messages WHERE id=$1',[messageId]);
  });
  it('persists replies and pins, hides personally, redacts everyone and enforces group/join boundaries',async()=>{
   const sent=await post('/messages',{content:'Original'});assert.equal(sent.status,200);const id=sent.body.message._id;
