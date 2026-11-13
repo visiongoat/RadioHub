@@ -393,6 +393,13 @@
       "breakpoints": true,
       "idx": 55,
       "tag": "0052_station_search_key_index"
+    },
+    {
+      "version": "7",
+      "when": 1794573306468,
+      "breakpoints": true,
+      "idx": 56,
+      "tag": "0053_chat_message_reactions"
     }
   ]
 }
