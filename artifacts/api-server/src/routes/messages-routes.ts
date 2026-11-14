@@ -424,8 +424,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                 }
             }
             if(replyTo)message.replyTo=replyTo;
-            if(await directPairBlocked(fromUserId,targetId))return void res.status(403).json({error:"Conversation unavailable"});
             const sender: any = await pgFindUserById(fromUserId);
+            if(await directPairBlocked(fromUserId,targetId))return void res.status(403).json({error:"Conversation unavailable"});
             const wsPayload = {
                 type: "chat:message",
                 message: {
@@ -446,7 +446,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             // Only notify if recipient is NOT currently viewing this conversation
             const isViewingConversation = chatService.isViewingConversation(targetId.toString(), fromUserId);
             const muted=!isViewingConversation && (await getPostgresPool().query("SELECT 1 FROM chat_inbox_state WHERE user_id=$1 AND kind='direct' AND target_id=$2 AND muted",[targetId.toString(),fromUserId])).rows.length>0;
-            if (!isViewingConversation && !muted) {
+            if (!isViewingConversation && !muted && !await directPairBlocked(fromUserId,targetId)) {
                 try {
                     // Upsert: one unread notification per sender (10 messages → 1 notification)
                     const notificationInput = {
@@ -467,13 +467,13 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                     // from the tab never saw anything on their PC. Fire-and-forget;
                     // sendToUserAllChannels covers web push AND mobile push tokens.
                     void import('../services/pushNotificationService')
-                        .then(({ PushNotificationService }) => PushNotificationService.sendToUserAllChannels(targetId.toString(), {
+                        .then(async ({ PushNotificationService }) => {if(await directPairBlocked(fromUserId,targetId))return;return PushNotificationService.sendToUserAllChannels(targetId.toString(), {
                         title: sender?.fullName || sender?.username || 'Mega Radio',
                         body: 'Yeni bir mesajınız var.',
                         data: { type: 'new_message', screen: 'messages', fromUserId, userName: sender?.fullName || sender?.username || 'MegaRadio' },
                         url: '/profile/messages',
                         tag: `dm-${fromUserId}`,
-                    } as any))
+                    } as any);})
                         .catch(() => { });
                     chatService.sendToUser(targetId.toString(), {
                         type: "notification:new_message",
