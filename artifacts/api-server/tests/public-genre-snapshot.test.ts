@@ -19,6 +19,7 @@ mock.module('../src/cache', { defaultExport: {
 }, namedExports: { CacheKeys: { genres: (...parts: any[]) => `genres:${JSON.stringify(parts)}` } } });
 mock.module('../src/seo/genre-whitelist-store', { namedExports: { getMergedWhitelist: () => whitelist } });
 mock.module('../src/data/postgres-taxonomy-store', { namedExports: {
+  pgGenres: async () => structuredClone(rows),
   pgPublicGenres: async (country?: string) => {
     reads.push(country || 'global'); if (readFailure) throw new Error('Fixture read failure'); return structuredClone(rows);
   },
