@@ -24,7 +24,7 @@ mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{n
 mock.module(new URL('../src/utils/logger.ts',import.meta.url).href,{namedExports:{logger:{error(){}}}});
 mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async()=>false}}});
 mock.module('express-rate-limit',{namedExports:{rateLimit:()=>((_req:any,_res:any,next:any)=>next())}});
-mock.module(new URL('../src/services/public-genre-navigation.ts',import.meta.url).href,{namedExports:{getCachedGroupMusicGenres:async()=>[{slug:'blues'},{slug:'classic-rock'},{slug:'arabesk'},{slug:'folk-music'}]}});
+mock.module(new URL('../src/services/group-music-catalog.ts',import.meta.url).href,{namedExports:{getCachedGroupMusicGenres:async()=>[{slug:'blues'},{slug:'classic-rock'},{slug:'arabesk'},{slug:'folk-music'}]}});
 const {registerChatGroupRoutes,groupInput}=await import('../src/routes/chat-group-routes');
 const app=express();app.use(express.json());registerChatGroupRoutes(app,((req:any,_res:any,next:any)=>{req.session={user:{userId:actor}};next();}));
 const server=app.listen(0);await new Promise<void>(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${(server.address() as any).port}/api/messages/groups`;

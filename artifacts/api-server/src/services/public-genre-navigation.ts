@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { pgPublicGenres, pgGenres } from '../data/postgres-taxonomy-store';
+import { pgPublicGenres } from '../data/postgres-taxonomy-store';
 import { publicStationCache } from '../public-station-cache';
 import { getMergedWhitelist } from '../seo/genre-whitelist-store';
 
@@ -26,13 +26,4 @@ export async function invalidatePublicGenreCaches(): Promise<void> {
   const results = await Promise.allSettled(['genres:', 'genre-slug:', 'genre-stations:']
     .map(pattern => Promise.resolve().then(() => publicStationCache.clearByPattern(pattern))));
   if (results.some(result => result.status === 'rejected')) throw new Error('Some public genre caches could not be invalidated');
-}
-
-
-/** Group interests use the full populated catalog shown by the app's picker,
- * not the smaller SEO/home navigation whitelist. Keep admin demotions excluded. */
-export function getCachedGroupMusicGenres(): Promise<any[]> {
-  return publicStationCache.getOrSetSingleFlight('genres:group-music:full-v1',
-    async () => (await pgGenres(undefined, true)).filter(genre =>
-      !genre.cleanupDemotion && genre.stationCount > 0), {ttl:60});
 }

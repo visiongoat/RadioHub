@@ -11,7 +11,8 @@ mock.module(new URL('../src/public-station-cache.ts',import.meta.url).href,{name
  getOrSetSingleFlight:async(key:string,compute:()=>Promise<unknown>,options:{ttl:number})=>{assert.equal(options.ttl,60);if(!cache.has(key))cache.set(key,compute());return cache.get(key);},
  clearByPattern:async()=>{},
 }}});
-const {getCachedGroupMusicGenres,getCachedPublicGenres}=await import('../src/services/public-genre-navigation');
+const {getCachedGroupMusicGenres}=await import('../src/services/group-music-catalog');
+const {getCachedPublicGenres}=await import('../src/services/public-genre-navigation');
 test('group interests use full picker catalog without widening curated home navigation',async()=>{
  const [a,b]=await Promise.all([getCachedGroupMusicGenres(),getCachedGroupMusicGenres()]);
  assert.deepEqual(a.map(g=>g.slug),['folk','arabesk','folk-music']);assert.deepEqual(b,a);

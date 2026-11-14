@@ -8,7 +8,7 @@ import {chatService} from '../services/chat-service';
 import {radioRequest,canonicalRadio} from '../utils/chat-radio';
 import {getPublicStationByIdentifier} from '../data/station-read-store';
 import {logger} from '../utils/logger';
-import {getCachedGroupMusicGenres} from '../services/public-genre-navigation';
+import {getCachedGroupMusicGenres} from '../services/group-music-catalog';
 const groupGenres=new Set(['pop','rock','jazz','electronic','classical','hip-hop','rnb','folk','turkish','world','ambient','latin']);
 const idValid=(id:unknown):id is string=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id);
 async function allowedMusicStyles(genres:unknown){
