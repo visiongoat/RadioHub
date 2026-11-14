@@ -1,3 +1,4 @@
+import {directPairBlocked} from './direct-chat-safety';
 import { getPostgresPool } from "../postgres-runtime";
 import { newPublicUserId } from "./postgres-user-store";
 
@@ -23,6 +24,7 @@ export async function pgCreateMessage(input: {
     const partner=actor===input.fromUserId?input.toUserId:input.fromUserId;
     await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${actor}:direct:${partner}`]);
    }
+   if(await directPairBlocked(input.fromUserId,input.toUserId,db))throw Object.assign(Error('Conversation unavailable'),{status:403});
    const result=await db.query(
     `INSERT INTO direct_messages(id,from_user_id,to_user_id,content,message_type,image_url,created_at,reply_to_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
@@ -131,8 +133,8 @@ export async function pgDeleteChatMessage(userId:string,id:string,scope:'self'|'
 }
 
 /** Pins are shared within the participant-only conversation. */
-export async function pgPinChatMessage(userId:string,id:string,pinned:boolean):Promise<any|null>{
- const result=await getPostgresPool().query(`UPDATE direct_messages SET pinned_at=CASE WHEN $3 THEN now() ELSE NULL END,updated_at=now() WHERE id=$1 AND (from_user_id=$2 OR to_user_id=$2) AND deleted_at IS NULL AND NOT ($2=ANY(hidden_for)) RETURNING *`,[id,userId,pinned]);
+export async function pgPinChatMessage(userId:string,id:string,pinned:boolean,db:{query:Function}=getPostgresPool()):Promise<any|null>{
+ const result=await db.query(`UPDATE direct_messages SET pinned_at=CASE WHEN $3 THEN now() ELSE NULL END,updated_at=now() WHERE id=$1 AND (from_user_id=$2 OR to_user_id=$2) AND deleted_at IS NULL AND NOT ($2=ANY(hidden_for)) RETURNING *`,[id,userId,pinned]);
  return result.rows[0]?shape(result.rows[0]):null;
 }
 export async function pgPinnedChatMessages(userId:string,partnerId:string):Promise<any[]>{
