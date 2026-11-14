@@ -32,7 +32,16 @@ export function roomText(value: unknown): string {
     throw Object.assign(Error("MESSAGE_NOT_ALLOWED"), { status: 400 });
   return text;
 }
-export const messageSQL = `SELECT m.id AS "_id",m.station_id AS "stationId",m.user_id AS "userId",m.content,m.created_at AS "createdAt",m.deleted_at AS "deletedAt",jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl','canOpenProfile',u.is_public_profile) AS sender FROM station_chat_messages m JOIN users u ON u.id=m.user_id`;
+export function roomContent(body: any) {
+  const messageType = body?.messageType ?? "text";
+  if (!["text", "gif"].includes(messageType))
+    throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
+  const content = roomText(body?.content);
+  if (messageType === "gif" && !/^klipy:[a-zA-Z0-9_-]{1,200}$/.test(content))
+    throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
+  return { content, messageType };
+}
+export const messageSQL = `SELECT m.id AS "_id",m.station_id AS "stationId",m.user_id AS "userId",m.content,m.message_type AS "messageType",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl','canOpenProfile',u.is_public_profile) AS sender FROM station_chat_messages m JOIN users u ON u.id=m.user_id`;
 export async function roomPage(
   station: string,
   actor: string,
@@ -52,7 +61,7 @@ export async function sendRoomMessage(
   actor: string,
   body: any,
 ) {
-  const content = roomText(body?.content),
+  const { content, messageType } = roomContent(body),
     clientId = body?.clientId;
   if (
     typeof clientId !== "string" ||
@@ -73,7 +82,11 @@ export async function sendRoomMessage(
       ])
     ).rows[0];
     if (duplicate) {
-      if (duplicate.stationId !== station)
+      if (
+        duplicate.stationId !== station ||
+        duplicate.content !== content ||
+        duplicate.messageType !== messageType
+      )
         throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
       await db.query("COMMIT");
       return duplicate;
@@ -96,8 +109,8 @@ export async function sendRoomMessage(
       throw Object.assign(Error("SLOW_DOWN"), { status: 429 });
     const id = randomBytes(12).toString("hex");
     await db.query(
-      "INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content) VALUES($1,$2,$3,$4,$5)",
-      [id, station, actor, clientId, content],
+      "INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,message_type) VALUES($1,$2,$3,$4,$5,$6)",
+      [id, station, actor, clientId, content, messageType],
     );
     const message = (await db.query(messageSQL + " WHERE m.id=$1", [id]))
       .rows[0];

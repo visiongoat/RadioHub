@@ -414,6 +414,13 @@
       "breakpoints": true,
       "idx": 58,
       "tag": "0055_station_live_chat"
+    },
+    {
+      "version": "7",
+      "when": 1794668237068,
+      "breakpoints": true,
+      "idx": 59,
+      "tag": "0056_station_chat_gif"
     }
   ]
 }
