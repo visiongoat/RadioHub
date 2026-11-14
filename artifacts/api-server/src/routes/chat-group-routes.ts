@@ -8,16 +8,16 @@ import {chatService} from '../services/chat-service';
 import {radioRequest,canonicalRadio} from '../utils/chat-radio';
 import {getPublicStationByIdentifier} from '../data/station-read-store';
 import {logger} from '../utils/logger';
-import {getCachedPublicGenres} from '../services/public-genre-navigation';
+import {getCachedGroupMusicGenres} from '../services/group-music-catalog';
 const groupGenres=new Set(['pop','rock','jazz','electronic','classical','hip-hop','rnb','folk','turkish','world','ambient','latin']);
 const idValid=(id:unknown):id is string=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id);
 async function allowedMusicStyles(genres:unknown){
  if(!Array.isArray(genres)||genres.every(g=>groupGenres.has(g)))return groupGenres;
- const catalog=await getCachedPublicGenres();
+ const catalog=await getCachedGroupMusicGenres();
  return new Set([...groupGenres,...catalog.map(g=>g.slug).filter((slug:unknown):slug is string=>typeof slug==='string')]);
 }
 export function groupMusicInput(genres:unknown,allowed:ReadonlySet<string>=groupGenres):string[]{
- if(!Array.isArray(genres)||genres.length>3||genres.some((genre:unknown)=>typeof genre!=='string'||!allowed.has(genre)))throw Object.assign(Error('Choose up to three music styles'),{status:400});
+ if(!Array.isArray(genres)||genres.length>3||genres.some((genre:unknown)=>typeof genre!=='string'||!allowed.has(genre)))throw Object.assign(Error('Choose up to three music styles'),{status:400,code:'GROUP_GENRES_INVALID'});
  return [...new Set(genres)] as string[];
 }
 export function groupInput(body:any,actor:string,allowed:ReadonlySet<string>=groupGenres){
@@ -37,7 +37,7 @@ export function registerChatGroupRoutes(app:Express,requireAuth:RequestHandler){
  const register=(method:'get'|'post',path:string,run:(db:any,actor:string,req:any)=>Promise<any>)=>app[method]('/api/messages/groups'+path,requireAuth,...(method==='post'?[limiter]:[]),async(req:any,res)=>{
   res.setHeader('Cache-Control','private, no-store');
   const actor=req.session?.user?.userId||req.session?.userId;if(!actor)return void res.status(401).json({error:'Not authenticated'});
-  let db:any;try{db=await getPostgresPool().connect();await db.query('BEGIN');const result=await run(db,actor,req);await db.query('COMMIT');res.json(result.data??result);if(result.presenceNotify)chatService.broadcastToUsers(result.presenceNotify,{type:'group:listening',groupId:result.groupId});if(result.change)chatService.broadcastToUsers(result.notify,{type:'group:message-updated',groupId:result.groupId,...result.change});if(result.notify)chatService.broadcastToUsers(result.notify,{type:'group:updated',groupId:result.groupId});if(result.push)for(const userId of result.push)void import('../services/pushNotificationService').then(({PushNotificationService})=>PushNotificationService.sendToUserAllChannels(userId,{title:result.title,body:result.body,data:{type:'new_message',screen:'group-chat',groupId:result.groupId},tag:`group-${result.groupId}`} as any)).catch(()=>{});}catch(error:any){await db?.query('ROLLBACK').catch(()=>{});if(!error.status)logger.error('Group chat failed:',error);res.status(error.status||500).json({error:error.status?error.message:'Unable to update group'});}finally{db?.release();}
+  let db:any;try{db=await getPostgresPool().connect();await db.query('BEGIN');const result=await run(db,actor,req);await db.query('COMMIT');res.json(result.data??result);if(result.presenceNotify)chatService.broadcastToUsers(result.presenceNotify,{type:'group:listening',groupId:result.groupId});if(result.change)chatService.broadcastToUsers(result.notify,{type:'group:message-updated',groupId:result.groupId,...result.change});if(result.notify)chatService.broadcastToUsers(result.notify,{type:'group:updated',groupId:result.groupId});if(result.push)for(const userId of result.push)void import('../services/pushNotificationService').then(({PushNotificationService})=>PushNotificationService.sendToUserAllChannels(userId,{title:result.title,body:result.body,data:{type:'new_message',screen:'group-chat',groupId:result.groupId},tag:`group-${result.groupId}`} as any)).catch(()=>{});}catch(error:any){await db?.query('ROLLBACK').catch(()=>{});if(!error.status)logger.error('Group chat failed:',error);res.status(error.status||500).json({error:error.status?error.message:'Unable to update group',...(error.status&&error.code==='GROUP_GENRES_INVALID'?{code:error.code}:{})});}finally{db?.release();}
  });
  const member=async(db:any,actor:string,id:string,invited=false,left=false)=>{if(!idValid(id))throw fail(400,'Invalid group ID');const result=await db.query(`SELECT g.*,m.role,m.status,m.joined_at,m.left_at FROM chat_groups g JOIN chat_group_members m ON m.group_id=g.id WHERE g.id=$1 AND m.user_id=$2 FOR UPDATE OF g,m`,[id,actor]);const row=result.rows[0];if(!row||!(invited?['active','invited',...(left?['left']:[])]:['active',...(left?['left']:[])]).includes(row.status))throw fail(404,'Group unavailable');return row;};
  const audience=async(db:any,id:string)=>(await db.query("SELECT user_id FROM chat_group_members WHERE group_id=$1 AND status IN ('active','invited')",[id])).rows.map((r:any)=>r.user_id);

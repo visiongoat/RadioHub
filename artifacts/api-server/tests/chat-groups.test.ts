@@ -24,7 +24,7 @@ mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{n
 mock.module(new URL('../src/utils/logger.ts',import.meta.url).href,{namedExports:{logger:{error(){}}}});
 mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async()=>false}}});
 mock.module('express-rate-limit',{namedExports:{rateLimit:()=>((_req:any,_res:any,next:any)=>next())}});
-mock.module(new URL('../src/services/public-genre-navigation.ts',import.meta.url).href,{namedExports:{getCachedPublicGenres:async()=>[{slug:'blues'},{slug:'classic-rock'}]}});
+mock.module(new URL('../src/services/group-music-catalog.ts',import.meta.url).href,{namedExports:{getCachedGroupMusicGenres:async()=>[{slug:'blues'},{slug:'classic-rock'},{slug:'arabesk'},{slug:'folk-music'}]}});
 const {registerChatGroupRoutes,groupInput}=await import('../src/routes/chat-group-routes');
 const app=express();app.use(express.json());registerChatGroupRoutes(app,((req:any,_res:any,next:any)=>{req.session={user:{userId:actor}};next();}));
 const server=app.listen(0);await new Promise<void>(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${(server.address() as any).port}/api/messages/groups`;
@@ -144,4 +144,12 @@ test('leaving timestamps departure and transfers administration without deleting
  queries.length=0;actorRole='admin';assert.equal((await post('/'+group+'/leave',{})).status,200);
  assert.ok(queries.some(q=>q.sql.includes("SET status='left',left_at=now()")));assert.ok(queries.some(q=>q.sql.includes("SET role='admin'")));
  assert.ok(!queries.some(q=>q.sql.includes('DELETE FROM chat_group_messages')));
+});
+
+test('group creation accepts the full picker catalog beyond home navigation genres',async()=>{
+ const response=await post('',{name:'Arabeskin Kralı ❤️🌹',memberIds:[peer],genres:['folk','arabesk','folk-music']});
+ assert.equal(response.status,200);
+ assert.deepEqual(queries.filter(q=>q.sql.startsWith('INSERT INTO chat_groups')).at(-1)?.args[4],['folk','arabesk','folk-music']);
+ const rejected=await post('',{name:'Example',memberIds:[peer],genres:['not-a-catalog-genre']});
+ assert.equal(rejected.status,400);assert.equal((await rejected.json()).code,'GROUP_GENRES_INVALID');
 });
