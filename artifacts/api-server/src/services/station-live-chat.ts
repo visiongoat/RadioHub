@@ -139,7 +139,7 @@ interface Client {
   identity: string;
   lastPing: number;
 }
-class StationChatHub {
+export class StationChatHub {
   private rooms = new Map<string, Set<Client>>();
   private listener: PoolClient | null = null;
   private listening: Promise<void> | null = null;
@@ -250,6 +250,8 @@ class StationChatHub {
       }
       if (data.toString() === "ping") c.lastPing = Date.now();
     });
+    if (!this.rooms.has(c.station)) this.rooms.set(c.station, new Set());
+    this.rooms.get(c.station)!.add(c);
     try {
       await this.listen();
       if (ws.readyState !== 1 || closed) {
@@ -257,8 +259,7 @@ class StationChatHub {
         if (!this.rooms.size) this.stop();
         return;
       }
-      if (!this.rooms.has(c.station)) this.rooms.set(c.station, new Set());
-      this.rooms.get(c.station)!.add(c);
+
       this.send(c, { type: "connected" });
       await this.presence();
       if (!this.timer) {
