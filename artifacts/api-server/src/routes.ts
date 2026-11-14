@@ -1,3 +1,4 @@
+import {registerStationChatRoutes} from './routes/station-chat-routes';
 import { ACTIVE_UI_LANGUAGES, isActiveUiLanguage } from '@workspace/seo-shared/seo-config';
 import { registerTvDiagnosticRoutes } from './routes/tv-diagnostics-routes';
 import { registerListeningRoutes } from './routes/listening-routes';
@@ -788,6 +789,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   startGenreWhitelistRefreshLoop();
   registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);
+  registerStationChatRoutes(app, requireAuth, requireAdmin);
   registerStripeSubscriptionRoutes(app, deps);
   registerStripePlanAdminRoutes(app, deps);
   registerSalesAnalyticsRoutes(app, deps);

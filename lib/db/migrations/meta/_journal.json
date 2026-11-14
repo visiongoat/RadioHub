@@ -400,6 +400,20 @@
       "breakpoints": true,
       "idx": 56,
       "tag": "0053_chat_message_reactions"
+    },
+    {
+      "version": "7",
+      "when": 1794662361192,
+      "breakpoints": true,
+      "idx": 57,
+      "tag": "0054_group_music_catalog_contract"
+    },
+    {
+      "version": "7",
+      "when": 1794662361193,
+      "breakpoints": true,
+      "idx": 58,
+      "tag": "0055_station_live_chat"
     }
   ]
 }
