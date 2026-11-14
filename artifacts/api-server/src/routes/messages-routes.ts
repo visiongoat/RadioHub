@@ -539,6 +539,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     chatWss.on("connection", async (socket: WebSocket, request) => {
         try {
             const url = new URL(request.url || "", `http://${request.headers.host}`);
+            if(url.searchParams.has("stationRoom")){await (await import('../services/station-live-chat')).stationChatHub.connect(socket,url.searchParams.get("stationRoom")||'');return;}
             const ticket = url.searchParams.get("ticket");
             if (!ticket) {
                 socket.send(JSON.stringify({ type: "error", message: "Missing ticket" }));
