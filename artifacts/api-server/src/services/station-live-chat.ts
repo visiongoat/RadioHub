@@ -11,9 +11,9 @@ export function roomText(value: unknown): string {
     throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
   const text = value
     .normalize("NFC")
-    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
+    .replace(/[\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
     .trim();
-  if (!text || [...text].length > 400)
+  if (!text || !/[\p{L}\p{N}\p{P}\p{S}]/u.test(text) || [...text].length > 400)
     throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
   if (/https?:\/\/|www\.|(?:t\.me|wa\.me|bit\.ly)\//i.test(text))
     throw Object.assign(Error("LINK_NOT_ALLOWED"), { status: 400 });

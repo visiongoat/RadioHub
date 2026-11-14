@@ -10,6 +10,8 @@ import { createNativePostgresFixture } from "./helpers/native-postgres-fixture";
 test("room input preserves Unicode/emoji, rejects links, control-only, oversized and baseline abuse", () => {
   assert.equal(roomText("  İstanbul’dan selam 👋  "), "İstanbul’dan selam 👋");
   assert.equal(roomText("日本のラジオ 🎶"), "日本のラジオ 🎶");
+  assert.equal(roomText("Aile 👨‍👩‍👧‍👦"), "Aile 👨‍👩‍👧‍👦");
+  assert.equal(roomText("می‌توانم"), "می‌توانم");
   for (const input of [
     "",
     "\u200B",
