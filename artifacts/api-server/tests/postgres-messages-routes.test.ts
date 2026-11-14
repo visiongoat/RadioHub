@@ -32,6 +32,8 @@ let follows = true;
 let hasHistory = false;
 let deletionCreatedAt=()=>new Date(Date.now()-60000).toISOString();
 
+let blocked=false;const safetyChanges:any[]=[];
+mock.module(new URL('../src/data/direct-chat-safety.ts',import.meta.url).href,{namedExports:{directPairBlocked:async()=>blocked,directBlockedPeers:async()=>new Set(blocked?[partnerId,nextPageContactId]:[]),directSafety:async()=>({blocked,canContact:!blocked}),setDirectBlock:async(owner:string,target:string,value:boolean)=>{safetyChanges.push([owner,target,value]);return{blocked:value,canContact:!value};},reportDirectChat:async()=>true,withAllowedDirectPair:async(_a:string,_b:string,operation:Function)=>{if(blocked)throw Object.assign(Error('Unavailable'),{status:403});return operation({query:async()=>({rows:[]})});}}});
 mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{namedExports:{getPublicStationByIdentifier:async(id:string)=>id.endsWith('999')?null:{_id:id,name:'Canonical Radio',country:'Austria',favicon:'https://example.test/logo.png'}}});
 mock.module("express-rate-limit", {
   namedExports: { ipKeyGenerator, rateLimit: () => (_req: any, _res: any, next: () => void) => next() },
@@ -301,4 +303,25 @@ test('pin and reply endpoints reject invalid IDs and references outside the conv
  assert.equal((await post('/api/messages/send',{toUserId:partnerId,content:'Reply',messageType:'text',replyToId:'507f1f77bcf86cd799439999'})).status,404);
  const reply=await post('/api/messages/send',{toUserId:partnerId,content:'Reply',messageType:'text',replyToId:'507f1f77bcf86cd799439998'});
  assert.equal(reply.status,200);const data=await reply.json();assert.equal(data.message.replyToId,'507f1f77bcf86cd799439998');assert.equal(data.message.replyTo.fromUserId,partnerId);
+});
+
+test('blocking defeats an existing conversation and suppresses receipts/online disclosure',async()=>{
+ blocked=true;hasHistory=true;const before=readCalls.length,receipts=sent.length;
+ try{
+  let response=await fetch(`${baseUrl}/api/messages/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({toUserId:partnerId,content:'Should not arrive',messageType:'text'})});assert.equal(response.status,403);await response.json();
+  response=await fetch(`${baseUrl}/api/messages/conversation/${partnerId}`);assert.equal(response.status,200);const history=await response.json() as any;assert.equal(history.canSend,false);assert.equal(history.partner.online,false);assert.deepEqual(history.listening,[]);assert.equal(readCalls.length,before);assert.equal(sent.length,receipts);
+  const typed=sent.length;await socketHandlers.message(Buffer.from(JSON.stringify({type:'chat:typing',toUserId:partnerId})));await socketHandlers.message(Buffer.from(JSON.stringify({type:'chat:read',fromUserId:partnerId})));assert.equal(sent.length,typed);assert.equal(readCalls.length,before);
+ }finally{blocked=false;hasHistory=false;}
+});
+
+test('safety preferences bind to the authenticated actor and never notify the target of the blocking choice',async()=>{
+ const put=(target:string,body:any)=>fetch(`${baseUrl}/api/messages/safety/${target}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await put(userId,{blocked:true})).status,400);
+ assert.equal((await put('bad',{blocked:true})).status,400);
+ assert.equal((await put(partnerId,{blocked:'true'})).status,400);
+ const start=sent.length;const response=await put(partnerId,{blocked:true,userId:'forged-owner'});
+ assert.equal(response.status,200);assert.deepEqual(safetyChanges.at(-1),[userId,partnerId,true]);
+ const events=sent.slice(start);assert.deepEqual(events.find(e=>e.userId===partnerId)?.payload,{type:'chat:permissions',partnerId:userId});
+ assert.equal(events.find(e=>e.userId===userId)?.payload.blocked,true);
+ assert.equal((await fetch(`${baseUrl}/api/messages/safety/${partnerId}/report`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'unsupported'})})).status,400);
 });

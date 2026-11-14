@@ -1,3 +1,5 @@
+import {directPairBlocked,directBlockedPeers,withAllowedDirectPair} from '../data/direct-chat-safety';
+import {registerDirectChatSafetyRoutes} from './direct-chat-safety-routes';
 import {setChatReaction,validChatReaction} from '../data/chat-reactions';
 import {registerChatInboxRoutes} from './chat-inbox-routes';
 import {getPostgresPool} from '../postgres-runtime';
@@ -133,6 +135,7 @@ async function canChat(userA: string, userB: string): Promise<boolean> {
 // Starting a conversation requires following an open profile. Existing participants
 // may reply without following the sender back; reading old history remains allowed.
 async function canSendConversation(senderId: string, recipientId: string): Promise<boolean> {
+    if (await directPairBlocked(senderId,recipientId)) return false;
     if (await pgHasConversation(senderId, recipientId)) return true;
     const [follows, recipient] = await Promise.all([pgIsFollowing(senderId, recipientId), pgFindUserById(recipientId)]);
     return follows && recipient?.isPublicProfile === true;
@@ -147,6 +150,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         res.setHeader('Cache-Control', 'private, no-store');
         next();
     });
+    registerDirectChatSafetyRoutes(app,requireAuth);
     registerChatGroupRoutes(app,requireAuth);
     registerChatInboxRoutes(app,requireAuth);
     // ── GET /api/messages/ws-ticket ─────────────────────────────────────────────
@@ -166,7 +170,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             if (!userId)
                 return void res.status(401).json({ error: "Not authenticated" });
             {
-                const contacts = (await pgMessageContacts(userId)).map((contact) => ({
+                const blocked=await directBlockedPeers(userId);
+                const contacts = (await pgMessageContacts(userId)).filter(contact=>!blocked.has(String(contact._id))).map((contact) => ({
                     ...contact, online: chatService.isOnline(String(contact._id)),
                 }));
                 return void res.json({ contacts });
@@ -184,8 +189,9 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             if (!rawId)
                 return void res.status(401).json({ error: "Not authenticated" });
             {
+                const blocked=await directBlockedPeers(rawId);
                 const conversations = (await pgConversations(rawId)).map((conversation) => ({
-                    ...conversation, online: chatService.isOnline(conversation.partnerId),
+                    ...conversation, online: !blocked.has(conversation.partnerId) && chatService.isOnline(conversation.partnerId),
                 }));
                 return void res.json({ conversations });
             }
@@ -230,15 +236,16 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                     pgFindUserById(partnerId),
                 ]);
                 const messages = pageMessages.slice(-limit);
-                await pgMarkMessagesRead(rawId, partnerId, messages.map(message => message._id));
+                const blocked=await directPairBlocked(rawId,partnerId);
+                if(!blocked){await pgMarkMessagesRead(rawId, partnerId, messages.map(message => message._id));
                 await markConversationNotificationsRead(rawId, partnerId);
-                chatService.sendToUser(partnerId, { type: "chat:read", byUserId: rawId });
+                chatService.sendToUser(partnerId, { type: "chat:read", byUserId: rawId });}
                 return void res.json({
                     messages,
-                    partner: partner ? { ...publicChatUser(partner), online: chatService.isOnline(partnerId) } : null,
+                    partner: partner ? { ...publicChatUser(partner), online: !blocked && chatService.isOnline(partnerId) } : null,
                     hasMore: pageMessages.length > limit,
                     canSend: await canSendConversation(rawId, partnerId),
-                    listening: chatListening.between(rawId,partnerId),
+                    listening: blocked?[]:chatListening.between(rawId,partnerId),
                     pinnedMessages:await pgPinnedChatMessages(rawId,partnerId),
                 });
             }
@@ -311,22 +318,27 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         const actor=getSessionUserId(req);if(!actor)return void res.status(401).json({error:'Not authenticated'});
         const {messageId,emoji}=req.body||{};
         if(typeof messageId!=='string'||!/^[a-f0-9]{24}$/i.test(messageId)||!validChatReaction(emoji))return void res.status(400).json({error:'Invalid reaction request'});
-        const row=await setChatReaction(getPostgresPool(),'direct',messageId.toLowerCase(),actor,emoji);
+        const original=await pgChatMessageById(messageId.toLowerCase());
+        if(!original||(original.fromUserId!==actor&&original.toUserId!==actor))return void res.status(404).json({error:'Message unavailable'});
+        if(await directPairBlocked(original.fromUserId,original.toUserId))return void res.status(403).json({error:'Conversation unavailable'});
+        const row=await withAllowedDirectPair(original.fromUserId,original.toUserId,db=>setChatReaction(db,'direct',messageId.toLowerCase(),actor,emoji));
         if(!row)return void res.status(404).json({error:'Message unavailable'});
         const message=await pgChatMessageById(row.id);if(!message)return void res.status(404).json({error:'Message unavailable'});
         chatService.broadcastToUsers([message.fromUserId,message.toUserId],{type:'chat:reaction',message});
         res.setHeader('Cache-Control','private, no-store');res.json({message});
-      }catch(error){logger.error('Chat reaction failed:',error);res.status(500).json({error:'Unable to react to message'});}
+      }catch(error){logger.error('Chat reaction failed:',error);res.status((error as any)?.status===403?403:500).json({error:'Unable to react to message'});}
     });
     app.post('/api/messages/pin',requireAuth,messageSendLimiter,async(req,res)=>{
       try{
         const userId=getSessionUserId(req);if(!userId)return void res.status(401).json({error:'Not authenticated'});
         const {messageId,pinned}=req.body||{};
         if(typeof messageId!=='string'||!/^[a-f0-9]{24}$/i.test(messageId)||typeof pinned!=='boolean')return void res.status(400).json({error:'Invalid pin request'});
-        const message=await pgPinChatMessage(userId,messageId.toLowerCase(),pinned);if(!message)return void res.status(404).json({error:'Message not found'});
+        const original=await pgChatMessageById(messageId.toLowerCase());
+        if(!original||(original.fromUserId!==userId&&original.toUserId!==userId))return void res.status(404).json({error:'Message not found'});
+        const message=await withAllowedDirectPair(original.fromUserId,original.toUserId,db=>pgPinChatMessage(userId,messageId.toLowerCase(),pinned,db));if(!message)return void res.status(404).json({error:'Message not found'});
         chatService.broadcastToUsers([message.fromUserId,message.toUserId],{type:'chat:pinned',message});
         res.json({message});
-      }catch(error){logger.error('Chat pin failed:',error);res.status(500).json({error:'Unable to pin message'});}
+      }catch(error){logger.error('Chat pin failed:',error);res.status((error as any)?.status===403?403:500).json({error:'Unable to pin message'});}
     });
     app.post('/api/messages/delete',requireAuth,messageSendLimiter,async(req,res)=>{
       try{
@@ -413,6 +425,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             }
             if(replyTo)message.replyTo=replyTo;
             const sender: any = await pgFindUserById(fromUserId);
+            if(await directPairBlocked(fromUserId,targetId))return void res.status(403).json({error:"Conversation unavailable"});
             const wsPayload = {
                 type: "chat:message",
                 message: {
@@ -433,7 +446,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             // Only notify if recipient is NOT currently viewing this conversation
             const isViewingConversation = chatService.isViewingConversation(targetId.toString(), fromUserId);
             const muted=!isViewingConversation && (await getPostgresPool().query("SELECT 1 FROM chat_inbox_state WHERE user_id=$1 AND kind='direct' AND target_id=$2 AND muted",[targetId.toString(),fromUserId])).rows.length>0;
-            if (!isViewingConversation && !muted) {
+            if (!isViewingConversation && !muted && !await directPairBlocked(fromUserId,targetId)) {
                 try {
                     // Upsert: one unread notification per sender (10 messages → 1 notification)
                     const notificationInput = {
@@ -454,13 +467,13 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                     // from the tab never saw anything on their PC. Fire-and-forget;
                     // sendToUserAllChannels covers web push AND mobile push tokens.
                     void import('../services/pushNotificationService')
-                        .then(({ PushNotificationService }) => PushNotificationService.sendToUserAllChannels(targetId.toString(), {
+                        .then(async ({ PushNotificationService }) => {if(await directPairBlocked(fromUserId,targetId))return;return PushNotificationService.sendToUserAllChannels(targetId.toString(), {
                         title: sender?.fullName || sender?.username || 'Mega Radio',
                         body: 'Yeni bir mesajınız var.',
                         data: { type: 'new_message', screen: 'messages', fromUserId, userName: sender?.fullName || sender?.username || 'MegaRadio' },
                         url: '/profile/messages',
                         tag: `dm-${fromUserId}`,
-                    } as any))
+                    } as any);})
                         .catch(() => { });
                     chatService.sendToUser(targetId.toString(), {
                         type: "notification:new_message",
@@ -474,7 +487,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         }
         catch (error) {
             logger.error("Failed to send message:", error);
-            res.status(500).json({ error: "Failed to send message" });
+            res.status((error as any)?.status===403?403:500).json({ error: (error as any)?.status===403?"Conversation unavailable":"Failed to send message" });
         }
     });
     // ── GET /api/messages/search-users ──────────────────────────────────────────
@@ -506,7 +519,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             const userIds = [...new Set((rawIds || '').split(',').filter(Boolean))];
             if (userIds.length > 100 || userIds.some(id => !/^[a-f0-9]{24}$/i.test(id)))
                 return void res.status(400).json({ error: 'Invalid user IDs' });
-            const contacts = new Set((await pgMessageContacts(getSessionUserId(req)!)).map(contact => String(contact._id)));
+            const blocked=await directBlockedPeers(getSessionUserId(req)!);
+            const contacts = new Set((await pgMessageContacts(getSessionUserId(req)!)).filter(contact=>!blocked.has(String(contact._id))).map(contact => String(contact._id)));
             const status: Record<string, boolean> = {};
             for (const uid of userIds)
                 if (contacts.has(uid)) status[uid] = chatService.isOnline(uid);
@@ -527,6 +541,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
        const message=await pgChatMessageById(messageId);
        if(!message||message.deletedAt||message.hiddenFor?.includes(userId)||message.messageType!=='station'||(message.fromUserId!==userId&&message.toUserId!==userId))return void res.status(404).json({error:'Shared radio unavailable'});
        const partnerId=message.fromUserId===userId?message.toUserId:message.fromUserId;
+       if(await directPairBlocked(userId,partnerId))return void res.status(403).json({error:"Conversation unavailable"});
        if(chatListening.update(userId,partnerId,messageId,clientId,revision,listening,Date.now(),radioRequest(message.content)?.stationId)){
          const entries=chatListening.between(userId,partnerId);
          chatService.sendToUser(partnerId,{type:'chat:listening',userId,participants:[userId,partnerId],entries});
@@ -555,7 +570,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             }
             const userId = ticketData.userId;
             deleteWsTicket(ticket);
-            const onlineContacts = (await pgMessageContacts(userId)).filter(contact => chatService.isOnline(String(contact._id))).map(contact => String(contact._id));
+            const blockedPeers=await directBlockedPeers(userId);
+            const onlineContacts = (await pgMessageContacts(userId)).filter(contact => !blockedPeers.has(String(contact._id)) && chatService.isOnline(String(contact._id))).map(contact => String(contact._id));
             const client = chatService.addClient(userId, socket);
             let activeRevision = 0;
             broadcastOnlineStatus(userId, true);
@@ -582,6 +598,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                                 break;
                             if (msg.messageIds !== undefined && (!Array.isArray(msg.messageIds) || msg.messageIds.length > 100 || msg.messageIds.some((id: unknown) => typeof id !== 'string' || !/^[0-9a-f]{24}$/i.test(id))))
                                 break;
+                            if(await directPairBlocked(userId,msg.fromUserId))break;
                             {
                                 await pgMarkMessagesRead(userId, msg.fromUserId, msg.messageIds);
                                 await markConversationNotificationsRead(userId, msg.fromUserId);
@@ -598,6 +615,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                             const withId = msg.withUserId || null;
                             if (withId !== null && (typeof withId !== 'string' || !/^[0-9a-f]{24}$/i.test(withId) || !await canReadConversation(userId, withId)))
                                 break;
+                            if(withId&&await directPairBlocked(userId,withId))break;
                             if (revision !== activeRevision || socket.readyState !== 1) break;
                             chatService.setActiveConversation(userId, withId, client);
                             // Immediately mark any pending notifications from that partner as read
@@ -652,6 +670,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             {
                 // Fetch every page: the contacts search deliberately caps its result at
                 // 100, which would silently omit presence updates for larger graphs.
+                const blocked=await directBlockedPeers(userId);
                 const contactIds = new Set<string>();
                 await Promise.all((["following", "followers"] as const).map(async (direction) => {
                     let page = 1;
@@ -665,7 +684,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                     }
                 }));
                 contactIds.delete(userId);
-                chatService.broadcastToUsers([...contactIds], { type: "chat:online_status", userId, online });
+                chatService.broadcastToUsers([...contactIds].filter(id=>!blocked.has(id)), { type: "chat:online_status", userId, online });
                 return;
             }
         }

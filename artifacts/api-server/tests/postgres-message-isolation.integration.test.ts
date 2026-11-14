@@ -31,6 +31,7 @@ before(async () => {
     ($3,'c','d','unrelated secret','2026-01-03'),($4,'b','a','same timestamp','2026-01-02')`, [id(1),id(2),id(3),id(4)]);
   mock.module(new URL('../src/postgres-runtime.ts', import.meta.url).href, { namedExports: { getPostgresPool: () => pool } });
   mock.module(new URL('../src/data/postgres-user-store.ts', import.meta.url).href, { namedExports: { newPublicUserId: () => id(99) } });
+  await pool.query('CREATE TABLE direct_chat_blocks(user_id text,blocked_user_id text,PRIMARY KEY(user_id,blocked_user_id))');
   store = await import('../src/data/postgres-message-store');
   notifications = await import('../src/data/postgres-notification-store');
   await pool.query(`CREATE TABLE user_notifications(id text PRIMARY KEY,user_id text,from_user_id text,type text,title text,message text,
