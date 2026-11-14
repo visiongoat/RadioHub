@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import {
   roomId,
   roomText,
+  roomContent,
   ticketHash,
 } from "../src/services/station-live-chat";
 import { createNativePostgresFixture } from "./helpers/native-postgres-fixture";
@@ -26,6 +27,16 @@ test("room input preserves Unicode/emoji, rejects links, control-only, oversized
   assert.equal(roomId("a".repeat(24)), true);
   assert.equal(roomId("../users"), false);
   assert.equal(ticketHash("token").length, 64);
+  assert.deepEqual(
+    roomContent({ content: "klipy:hello-world", messageType: "gif" }),
+    { content: "klipy:hello-world", messageType: "gif" },
+  );
+  for (const body of [
+    { content: "https://other.test/x.gif", messageType: "gif" },
+    { content: "not-provider-reference", messageType: "gif" },
+    { content: "hello", messageType: "photo" },
+  ])
+    assert.throws(() => roomContent(body));
 });
 describe(
   "live room native PostgreSQL contracts",
@@ -112,6 +123,52 @@ describe(
             clientId: randomUUID(),
           }),
         (e: any) => e.status === 403,
+      );
+    });
+    test("GIF reference persists with its type, retries once, and arbitrary media is rejected by DB", async () => {
+      await f.pool.query(
+        "DELETE FROM station_chat_sanctions WHERE user_id=$1",
+        [alice],
+      );
+      await f.pool.query(
+        "UPDATE station_chat_messages SET created_at=now()-interval '10 seconds' WHERE user_id=$1",
+        [alice],
+      );
+      const clientId = randomUUID(),
+        body = { content: "klipy:hello-wave", messageType: "gif", clientId };
+      const gif = await runtime.sendRoomMessage(station, alice, body);
+      assert.equal(gif.messageType, "gif");
+      assert.equal(
+        (await runtime.sendRoomMessage(station, alice, body))._id,
+        gif._id,
+      );
+      assert.equal(
+        (await runtime.roomPage(station, alice)).messages.find(
+          (x) => x._id === gif._id,
+        )?.messageType,
+        "gif",
+      );
+      await assert.rejects(() =>
+        runtime.sendRoomMessage(station, alice, {
+          ...body,
+          messageType: "text",
+        }),
+      );
+      await assert.rejects(() =>
+        f.pool.query(
+          "INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,message_type) VALUES($1,$2,$3,$4,'https://evil.test/file.gif','gif')",
+          ["dd".repeat(12), station, alice, randomUUID()],
+        ),
+      );
+      await f.pool.query(
+        "UPDATE station_chat_messages SET deleted_at=now(),content='Silinen mesaj' WHERE id=$1",
+        [gif._id],
+      );
+      assert.equal(
+        (await runtime.roomPage(station, alice)).messages.some(
+          (x) => x._id === gif._id,
+        ),
+        false,
       );
     });
     test("page cursor respects station and 24-hour window; empty rooms are valid", async () => {
