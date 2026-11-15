@@ -433,6 +433,13 @@
       "version": "7",
       "when": 1794765600000,
       "idx": 61,
+      "tag": "0057_verified_oe3_official_homepage",
+      "breakpoints": true
+    },
+    {
+      "version": "7",
+      "when": 1794765600001,
+      "idx": 62,
       "tag": "0058_verified_oe3_canonical_recovery",
       "breakpoints": true
     }
