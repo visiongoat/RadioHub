@@ -2,6 +2,10 @@
 
 ## Başlangıç
 
+- Her çalışma başlangıcında ve aradan sonra, commit/push/merge öncesinde
+  `pnpm run repo:check` ile uzak main'i güncelle ve kontrol et. Eksik commit varsa
+  mevcut çalışmayı koruyarak önce main ile birleştir. Kalıcı yerel kontroller:
+  [Repository workflow](REPOSITORY_WORKFLOW.md).
 - İnceleme tarihi: 5 Ekim 2026.
 - Kaynak: https://github.com/mumiix58/RadioHub
 - Başlangıç commit'i: `add2ba492dd2eb450a706fcb8440dba6262cbbbd` (`origin/main`).
