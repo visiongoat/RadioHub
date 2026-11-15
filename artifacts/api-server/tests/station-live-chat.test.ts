@@ -21,8 +21,11 @@ test("room input preserves Unicode/emoji, rejects links, control-only, oversized
     "www.spam.test",
     "siktir",
     "FUCK",
+    "fu**ck**",
+    "ht**tp**://spam.test",
   ])
     assert.throws(() => roomText(input));
+  assert.equal(roomText("**güzel** @ece"), "**güzel** @ece");
   assert.equal(roomText("Scunthorpe’dan selam"), "Scunthorpe’dan selam");
   assert.equal(roomId("a".repeat(24)), true);
   assert.equal(roomId("../users"), false);

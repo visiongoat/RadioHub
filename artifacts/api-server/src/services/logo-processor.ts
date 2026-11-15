@@ -1,3 +1,4 @@
+import {prepareManualLogo} from './manual-logo-input';
 import fs from 'fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'path';
@@ -632,6 +633,7 @@ export class LogoProcessor {
     const operationId = randomUUID();
     let claimedFavicon: string | null = null;
     try {
+      buffer = await prepareManualLogo(buffer);
       const validation = await this.isValidImageBuffer(buffer);
       if (!validation.valid) {
         return { success: false, error: validation.reason || 'Invalid image format', failureType: 'invalid_format' };

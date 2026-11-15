@@ -114,7 +114,7 @@ export default function StationEditDialog({ station, isOpen, onClose, onGenerate
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/') && !/\.svg$/i.test(file.name)) {
       toast({
         title: "Invalid File",
         description: "Please select an image file for the favicon.",
@@ -286,7 +286,7 @@ export default function StationEditDialog({ station, isOpen, onClose, onGenerate
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/*,.svg,image/svg+xml"
                       onChange={handleFaviconUpload}
                       className="hidden"
                       data-testid="input-favicon-upload"
