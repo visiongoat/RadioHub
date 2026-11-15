@@ -1,3 +1,4 @@
+import {stationChatProfilePreview} from '../services/station-chat-profile';
 import { randomBytes } from "node:crypto";
 import type { Express, RequestHandler } from "express";
 import { rateLimit } from "express-rate-limit";
@@ -54,6 +55,7 @@ export function registerStationChatRoutes(
           .json({ error: e.status ? e.message : "CHAT_UNAVAILABLE" });
       }
     });
+  route('get','/api/station-chat/users/:userId/preview',[limited,optional],async req=>stationChatProfilePreview(String(req.params.userId),actor(req)));
   const validate = async (req: any) => {
     if (!roomId(req.params.station))
       throw Object.assign(Error("ROOM_UNAVAILABLE"), { status: 404 });

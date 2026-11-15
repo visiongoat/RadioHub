@@ -1,3 +1,4 @@
+import {blockedContacts,unblockContact} from '../data/blocked-contacts';
 import type {Express,RequestHandler} from 'express';
 import {rateLimit} from 'express-rate-limit';
 import {directSafety,setDirectBlock,reportDirectChat} from '../data/direct-chat-safety';
@@ -12,6 +13,21 @@ export function registerDirectChatSafetyRoutes(app:Express,auth:RequestHandler){
   if(!/^[a-f0-9]{24}$/.test(target)||owner===target)return void res.status(400).json({error:'Invalid contact'});
   try{if(!await pgFindUserById(target))return void res.status(404).json({error:'Contact unavailable'});req.params.partnerId=target;next();}catch{res.status(503).json({error:'Safety settings unavailable'});}
  };
+ app.get('/api/messages/blocked',auth,limit,async(req,res)=>{
+  const after=String(req.query.after||'');
+  if(after&&!/^[a-f0-9]{24}$/.test(after))return void res.status(400).json({error:'Invalid cursor'});
+  try{res.setHeader('Cache-Control','no-store');res.json(await blockedContacts(actor(req),after));}
+  catch{res.status(503).json({error:'Safety settings unavailable'});}
+ });
+ app.delete('/api/messages/blocked/:partnerId',auth,limit,validate,async(req,res)=>{
+  try{
+   const owner=actor(req),target=String(req.params.partnerId);
+   await unblockContact(owner,target);const state=await directSafety(owner,target);
+   chatService.sendToUser(owner,{type:'chat:safety',partnerId:target,...state});
+   chatService.sendToUser(target,{type:'chat:permissions',partnerId:owner});
+   res.json({success:true,...state});
+  }catch{res.status(503).json({error:'Safety settings unavailable'});}
+ });
  app.get('/api/messages/safety/:partnerId',auth,validate,async(req,res)=>{
   try{res.json(await directSafety(actor(req),String(req.params.partnerId)));}catch{res.status(503).json({error:'Safety settings unavailable'});}
  });
