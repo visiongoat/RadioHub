@@ -81,7 +81,7 @@ const faviconUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype && file.mimetype.startsWith('image/')) cb(null, true);
+    if ((file.mimetype && file.mimetype.startsWith('image/')) || (/\.svg$/i.test(file.originalname||'') && (!file.mimetype || file.mimetype==='application/octet-stream'))) cb(null, true);
     else cb(new Error('Only image files are allowed'));
   },
 });

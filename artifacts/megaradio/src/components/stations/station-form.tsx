@@ -601,7 +601,7 @@ function StationFormSession({
                           <input
                             type="file"
                             ref={faviconInput}
-                            accept="image/*"
+                            accept="image/*,.svg,image/svg+xml"
                             className="hidden"
                             aria-label="Upload station logo file"
                             onChange={async (e) => {
