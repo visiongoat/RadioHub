@@ -15,11 +15,13 @@ export function roomText(value: unknown): string {
     .trim();
   if (!text || !/[\p{L}\p{N}\p{P}\p{S}]/u.test(text) || [...text].length > 400)
     throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
-  if (/https?:\/\/|www\.|(?:t\.me|wa\.me|bit\.ly)\//i.test(text))
+  // Check exactly the visible text too: bold delimiters must not hide links/abuse.
+  const visibleText=text.replace(/\*\*([^*\n]+)\*\*/g, '$1');
+  if (/https?:\/\/|www\.|(?:t\.me|wa\.me|bit\.ly)\//i.test(visibleText))
     throw Object.assign(Error("LINK_NOT_ALLOWED"), { status: 400 });
   // First release deterministic abuse floor. Never claim this catches all abuse;
   // reporting and server sanctions remain necessary and operate independently.
-  const words = text
+  const words = visibleText
     .toLocaleLowerCase("en")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
