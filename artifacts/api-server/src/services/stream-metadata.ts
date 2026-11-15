@@ -22,6 +22,7 @@ interface StreamConnection {
   nowPlaying: string | undefined;
   metadata: MetadataResult;
   lastUpdate: number;
+  lastActivity: number;
   destroy: () => void;
 }
 
@@ -85,7 +86,9 @@ export class StreamMetadataService {
     url: string,
     controller: AbortController,
     onTitle: (title: string, headers: any) => void,
-    onError: (err: Error) => void
+    onError: (err: Error) => void,
+    onReset: (headers?:{icyName:string|null;icyGenre:string|null}) => void,
+    onActivity: () => void
   ): void {
     const request = new Request(url, {
       signal: controller.signal as any,
@@ -101,6 +104,7 @@ export class StreamMetadataService {
 
     const reschedule = (delayMs: number) => {
       if (controller.signal.aborted) return;
+      onReset();
       consecutiveFailures++;
       if (consecutiveFailures >= MAX_FAILURES && !givenUp) {
         givenUp = true;
@@ -123,11 +127,13 @@ export class StreamMetadataService {
     // never gets blackout-silenced for 10 minutes.
     const rescheduleSoft = (delayMs: number) => {
       if (controller.signal.aborted) return;
+      onReset();
       if (givenUp) return;
       setTimeout(() => doAnalyze(), delayMs).unref?.();
     };
 
     const doAnalyze = () => {
+      if(controller.signal.aborted)return;
       fetch(request).then((response) => {
         if (!response.ok || !response.body) {
           onError(new Error(`HTTP ${response.status}`));
@@ -141,9 +147,10 @@ export class StreamMetadataService {
         const icyName = response.headers.get('icy-name');
         const icyGenre = response.headers.get('icy-genre');
 
-        if (icyName) {
-          onTitle(icyName, { icyName, icyGenre });
-        }
+        // Transport identity is not a song. Reconnecting must not expose the
+        // previous connection's cached track while awaiting its first ICY frame.
+        onReset({icyName,icyGenre});
+        onActivity();
 
         if (!metaIntervalHeader) {
           return;
@@ -196,6 +203,7 @@ export class StreamMetadataService {
         };
 
         stream.on('readable', () => {
+          onActivity();
           if (action === ReadAction.PASS_SEGMENT) return passSegment();
           if (action === ReadAction.DECODE_META_SIZE) return decodeMetaSize();
           if (action === ReadAction.EXTRACT_TITLE) return extractTitle();
@@ -218,7 +226,12 @@ export class StreamMetadataService {
 
   private getOrCreateConnection(streamUrl: string): StreamConnection {
     const existing = this.connections.get(streamUrl);
-    if (existing) return existing;
+    if (existing) {
+      // A silent socket must not serve its last song forever. Audio activity,
+      // rather than song age, keeps long unchanged tracks valid.
+      if(!existing.nowPlaying||Date.now()-existing.lastActivity<=45000)return existing;
+      existing.destroy();
+    }
 
     if (this.connections.size >= this.maxConnections) {
       let oldestUrl = '';
@@ -251,13 +264,14 @@ export class StreamMetadataService {
     }
 
     const controller = new AbortController();
-    const sockets = new Set<string>();
+    const sockets = new Set<string>(existing?.sockets);
     const conn: StreamConnection = {
       controller,
       sockets,
       nowPlaying: undefined,
       metadata: {},
       lastUpdate: Date.now(),
+      lastActivity: Date.now(),
       destroy: () => {
         controller.abort();
         this.connections.delete(streamUrl);
@@ -271,6 +285,7 @@ export class StreamMetadataService {
       controller,
       (title, headers) => {
         const parsed = parseArtistTitle(title);
+        if(!parsed.title&&!parsed.artist)return;
         conn.metadata = {
           ...parsed,
           station: headers?.icyName || undefined,
@@ -281,7 +296,12 @@ export class StreamMetadataService {
       },
       (err) => {
         logger.log(`❌ Stream metadata error for ${streamUrl}: ${err.message}`);
-      }
+      },
+      headers=>{
+        conn.nowPlaying=undefined;
+        conn.metadata={station:headers?.icyName||conn.metadata.station,genre:headers?.icyGenre||conn.metadata.genre};
+      },
+      ()=>{conn.lastActivity=Date.now();}
     );
 
     return conn;
@@ -310,7 +330,7 @@ export class StreamMetadataService {
 
   getMetadata(streamUrl: string): MetadataResult {
     const conn = this.connections.get(streamUrl);
-    if (!conn) return {};
+    if (!conn || (conn.nowPlaying&&Date.now()-conn.lastActivity>45000)) return {};
     return conn.metadata;
   }
 
