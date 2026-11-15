@@ -24,6 +24,23 @@ it('only enables the explicitly selected German Ö3 record', () => {
   }
 });
 
+it('retains the pilot on the verified merge survivor without leaking to aliases or other locales', () => {
+  const survivor = { ...station, _id: '68a8c483bd66579311ab2ffe' };
+  for (const record of [station, survivor]) {
+    expect(getStationEditorial(record, 'de')).toBe(content);
+    expect(getStationEditorial(record, 'de', '/de/sender/orf-hitradio-o3')).toBe(content);
+    for (const pathname of ['/de/sender/orf-hitradio-o3-hq', '/en/station/orf-hitradio-o3', '/de/stations/' + record._id]) {
+      expect(getStationEditorial(record, 'de', pathname)).toBeNull();
+    }
+    expect(getStationEditorial({ ...record, stationPageMode: 'information' }, 'de')).toBeNull();
+    expect(getStationEditorial({ ...record, slug: 'orf-hitradio-o3-hq' }, 'de')).toBeNull();
+    for (const language of ACTIVE_SITEMAP_LANGUAGES.filter(language => language !== 'de')) {
+      expect(getStationEditorial(record, language)).toBeNull();
+    }
+  }
+  expect(renderStationEditorialHtml(survivor, 'de')).toBe(renderStationEditorialHtml(station, 'de'));
+});
+
 it('renders the complete editorial and real source links without starting a player', () => {
   const { container } = render(<StationEditorial content={content} />);
   for (const paragraph of content.paragraphs) expect(screen.getByText(paragraph)).toBeInTheDocument();

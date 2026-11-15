@@ -121,9 +121,13 @@ export function getStationEditorial(
   language: string,
   pathname?: string,
 ): StationEditorial | null {
-  if (language === 'de' && station?._id === '68a8c483bd66579311ab2ffa'
-    && station.slug === 'orf-hitradio-o3') return oe3German;
-  if (!pathname || station?.stationPageMode === 'information') return null;
+  if (station?.stationPageMode === 'information') return null;
+  // The reviewed pilot's original record was merged into this verified survivor.
+  if (language === 'de' && (station?._id === '68a8c483bd66579311ab2ffa'
+    || station?._id === '68a8c483bd66579311ab2ffe')
+    && station.slug === 'orf-hitradio-o3'
+    && (!pathname || pathname === '/de/sender/orf-hitradio-o3')) return oe3German;
+  if (!pathname) return null;
   const record = reviewedByPath.get(pathname);
   return record && record.language === language && record.stationId === station?._id
     && record.slug === station.slug ? record : null;

@@ -43,9 +43,9 @@ function section(body: string, kind: 'country' | 'city') {
   return body.match(new RegExp(`<section class="related-stations related-stations--${kind}">([\\s\\S]*?)</section>`))?.[1] || '';
 }
 
-test('German Ö3 editorial follows related stations in initial HTML with a short summary above them', () => {
+test('German Ö3 merge survivor retains the complete pilot in initial HTML below related stations', () => {
   const summary = 'Kurzer Überblick über Ö3.';
-  const station = { _id: '68a8c483bd66579311ab2ffa', slug: 'orf-hitradio-o3', name: 'ORF Hitradio Ö3', descriptions: { de: summary } };
+  const station = { _id: '68a8c483bd66579311ab2ffe', slug: 'orf-hitradio-o3', name: 'ORF Hitradio Ö3 | HQ', descriptions: { de: summary } };
   const editorial = getStationEditorial(station, 'de')!;
   const body = stationBody('de', {}, { samePublisher: [{ name: 'Related Radio', slug: 'related-radio' }] }, station);
   for (const text of [editorial.historyText, ...editorial.paragraphs, ...editorial.questions.flatMap(item => [item.question, item.answer])]) {

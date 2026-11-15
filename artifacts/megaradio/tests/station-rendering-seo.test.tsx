@@ -342,9 +342,10 @@ it('keeps the matching SSR article and head while the complete API request is sl
 
 it('keeps the Ö3 summary above recommendations and all detailed editorial below both station lists', async () => {
   state.language = 'de'; state.slug = 'orf-hitradio-o3';
+  window.history.replaceState({}, '', '/de/sender/orf-hitradio-o3');
   state.similar = [{ _id: 'related-id', slug: 'related-jazz', name: 'Related Jazz', country: 'Austria' }];
   state.country = [{ _id: 'country-id', name: 'Country News', country: 'Austria' }];
-  const oe3 = { ...seed, _id: '68a8c483bd66579311ab2ffa', slug: state.slug, name: 'ORF Hitradio Ö3', country: 'Austria', countryCode: 'AT' };
+  const oe3 = { ...seed, _id: '68a8c483bd66579311ab2ffe', slug: state.slug, name: 'ORF Hitradio Ö3 | HQ', country: 'Austria', countryCode: 'AT' };
   const content = getStationEditorial(oe3, 'de')!;
   bootstrap(oe3, 'de'); mount();
   const editorial = screen.getByTestId('station-editorial');
