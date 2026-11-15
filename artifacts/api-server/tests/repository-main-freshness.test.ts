@@ -160,3 +160,16 @@ test('installation never replaces custom hooks or a configured hooksPath, even p
     assert.equal(f.git(f.branch, 'config', '--get', 'core.hooksPath'), 'custom-hooks');
   } finally { f.close(); }
 });
+
+test('an explicitly empty hooksPath is also preserved and cannot produce a false installation success', () => {
+  const f = fixture();
+  try {
+    f.git(f.branch, 'config', 'core.hooksPath', '');
+    const result = f.install();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /existing hooksPath/);
+    assert.equal(f.git(f.branch, 'config', '--get', 'core.hooksPath'), '');
+    assert.throws(() => readFileSync(path.join(f.branch, '.git', 'hooks', 'radiohub-check-main.sh')));
+    assert.throws(() => readFileSync(path.join(f.branch, '.git', 'hooks', 'pre-commit')));
+  } finally { f.close(); }
+});

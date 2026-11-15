@@ -6,10 +6,10 @@ import { STOCK_LFS_PRE_PUSH } from './git-lfs-pre-push.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-let configured;
-try { configured = git('config', '--get', 'core.hooksPath'); }
+let hasConfiguredHooksPath = false;
+try { git('config', '--get', 'core.hooksPath'); hasConfiguredHooksPath = true; }
 catch (error) { if (error.status !== 1) throw error; }
-if (configured) throw new Error('An existing hooksPath is configured. It was not changed; integrate the main guard with those hooks manually.');
+if (hasConfiguredHooksPath) throw new Error('An existing hooksPath is configured. It was not changed; integrate the main guard with those hooks manually.');
 const hooks = path.join(git('rev-parse', '--path-format=absolute', '--git-common-dir'), 'hooks');
 const files = [
   ['scripts/check-main-freshness.sh', 'radiohub-check-main.sh'],
