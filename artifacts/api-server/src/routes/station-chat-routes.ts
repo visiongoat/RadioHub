@@ -1,3 +1,4 @@
+import {stationRoomSummaries,summaryStationIds} from '../services/station-room-summaries';
 import {stationChatProfilePreview} from '../services/station-chat-profile';
 import { randomBytes } from "node:crypto";
 import type { Express, RequestHandler } from "express";
@@ -56,6 +57,7 @@ export function registerStationChatRoutes(
       }
     });
   route('get','/api/station-chat/users/:userId/preview',[limited,optional],async req=>stationChatProfilePreview(String(req.params.userId),actor(req)));
+  route('get','/api/station-chat/rooms/summary',[limited,optional],async req=>stationRoomSummaries(summaryStationIds(req.query.stations),actor(req)));
   const validate = async (req: any) => {
     if (!roomId(req.params.station))
       throw Object.assign(Error("ROOM_UNAVAILABLE"), { status: 404 });
