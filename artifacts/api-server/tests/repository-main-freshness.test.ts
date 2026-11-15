@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { STOCK_LFS_PRE_PUSH } from '../../../scripts/git-lfs-pre-push.mjs';
 
 const script = fileURLToPath(new URL('../../../scripts/check-main-freshness.sh', import.meta.url));
 const installer = fileURLToPath(new URL('../../../scripts/install-repository-guards.mjs', import.meta.url));
@@ -115,6 +116,32 @@ test('installed Git hooks block stale commits and pushes without preventing a me
     const otherBranchPush = f.run(f.branch, 'git', ['push', 'origin', 'stale:refs/heads/stale']);
     assert.notEqual(otherBranchPush.status, 0);
     assert.match(otherBranchPush.stderr, /new main commits are missing/);
+  } finally { f.close(); }
+});
+
+test('standard LFS hook is retained and receives the original arguments/input only after freshness succeeds', () => {
+  const f = fixture();
+  try {
+    const hooks = path.join(f.branch, '.git', 'hooks'), bin = path.join(f.root, 'bin');
+    mkdirSync(bin);
+    const log = path.join(f.root, 'lfs-input');
+    const stub = path.join(bin, 'git-lfs');
+    writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$@" >"$LFS_TEST_LOG"\ncat >>"$LFS_TEST_LOG"\n');
+    chmodSync(stub, 0o755);
+    f.env.PATH = bin + path.delimiter + process.env.PATH;
+    f.env.LFS_TEST_LOG = log;
+    writeFileSync(path.join(hooks, 'pre-push'), STOCK_LFS_PRE_PUSH);
+    assert.equal(f.install().status, 0);
+    assert.equal(f.install().status, 0);
+    assert.equal(readFileSync(path.join(hooks, 'radiohub-pre-push.lfs'), 'utf8'), STOCK_LFS_PRE_PUSH);
+    f.git(f.branch, 'push', 'origin', 'HEAD:refs/heads/lfs-fixture');
+    const input = readFileSync(log, 'utf8');
+    assert.match(input, /pre-push\norigin\n/);
+    assert.match(input, /HEAD [0-9a-f]{40} refs\/heads\/lfs-fixture 0{40}/);
+    f.advance('later-main.txt');
+    const rejected = f.run(f.branch, 'git', ['push', 'origin', 'HEAD:refs/heads/stale-lfs']);
+    assert.notEqual(rejected.status, 0);
+    assert.equal(readFileSync(log, 'utf8'), input, 'a rejected push must not start LFS uploads');
   } finally { f.close(); }
 });
 

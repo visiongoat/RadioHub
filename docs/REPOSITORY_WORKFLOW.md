@@ -12,7 +12,10 @@ force-push over someone else's changes as a freshness fix.
 Run `pnpm run repo:install-guards` once per local clone. This installs pre-commit
 and pre-push checks in the clone's shared Git hooks directory, including
 linked worktrees and GitHub Desktop commits. It does not replace an existing
-hook or `core.hooksPath`. If one exists, installation stops without changing it.
+custom hook or `core.hooksPath`. If one exists, installation stops without changing
+it. The exact standard Git LFS pre-push hook is supported: its original bytes are
+preserved as `radiohub-pre-push.lfs` and invoked after a successful freshness
+check, with unchanged arguments and standard input. LFS uploads remain enabled.
 
 The hooks fetch main on every commit attempt and branch push. A missing remote,
 failed fetch or outdated branch blocks the operation. Push checks verify the
