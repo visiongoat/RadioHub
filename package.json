@@ -3,6 +3,8 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "repo:check": "sh scripts/check-main-freshness.sh",
+    "repo:install-guards": "node scripts/install-repository-guards.mjs",
     "preinstall": "node -e \"if (!(process.env.npm_config_user_agent || '').startsWith('pnpm/')) { console.error('Use pnpm instead'); process.exit(1); }\"",
     "build": "pnpm run typecheck && pnpm -r --if-present run build && pnpm run test",
     "test": "pnpm -r --if-present run test",

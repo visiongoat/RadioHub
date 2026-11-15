@@ -1,0 +1,8 @@
+#!/bin/sh
+# RadioHub main freshness guard
+set -eu
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+  case "$local_sha" in 0000000000000000000000000000000000000000|0000000000000000000000000000000000000000000000000000000000000000) continue ;; esac
+  sh "$(dirname "$0")/radiohub-check-main.sh" "$local_sha"
+done
