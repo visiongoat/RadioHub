@@ -457,9 +457,15 @@ for (const apiOnly of [false, true]) {
                 },
               ]);
             } else {
-              JSON.parse(body);
-              // Pin the original AASA JSON, including all 178 existing paths.
-              assert.equal(createHash('sha256').update(body).digest('hex'),
+              const document = JSON.parse(body);
+              const paths: string[] = document.applinks.details[0].paths;
+              const tvPaths = ['/tv', ...['en','es','fr','de','pt','it','ru','ar','zh','tr','ja','ko','hi','he','nl','pl'].map(lang=>`/${lang}/tv`)];
+              const isTvPath = (path: string) => /^\/(?:[a-z]{2}\/)?tv$/.test(path);
+              assert.deepEqual(paths.filter(isTvPath).sort(), tvPaths.sort());
+              // Preserve the exact previous AASA contract after removing only
+              // the explicitly added pairing routes, including app identity.
+              document.applinks.details[0].paths = paths.filter(path=>!isTvPath(path));
+              assert.equal(createHash('sha256').update(JSON.stringify(document)).digest('hex'),
                 '171008f5e62971cf7c7d446f7f309ee8e7d8b9a56d5417434791ea56b6dac33e');
             }
           });
