@@ -14,3 +14,9 @@ test('associations do not capture unrelated web or administrative routes', () =>
   assert.ok(!paths.some(path => /admin|auth|checkout|login/.test(path)));
   assert.ok(paths.includes('/zh/%E7%94%B5%E5%8F%B0/*'));
 });
+
+test('TV confirmation is claimed without claiming OAuth or unrelated login routes',()=>{
+ const paths=mobileAppLinkPaths();
+ for(const path of ['/tv','/tr/tv','/de/tv','/en/tv'])assert.ok(paths.includes(path));
+ assert.ok(!paths.includes('/tv/*'));assert.ok(!paths.includes('/api/auth/*'));
+});

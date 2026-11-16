@@ -497,6 +497,7 @@ function PlayerWrapper() {
 
   // Reference: Profile pages do NOT have footer (user.vue layout)
   const isProfilePage = englishPath === '/profile' || englishPath.startsWith('/profile/');
+  const isTvPairingPage = englishPath === '/tv';
   const isMessagesPage = englishPath === '/profile/messages' || englishPath.startsWith('/profile/messages/');
 
   return (
@@ -519,11 +520,11 @@ function PlayerWrapper() {
               client-side counterpart to the SSR breadcrumb in
               api-server/seo-renderer.ts so the BreadcrumbList JSON-LD always
               has matching visible links post-hydration. */}
-          {!isMessagesPage && !hasProfileContentBreadcrumbs(englishPath) && <RouteBreadcrumbs />}
+          {!isMessagesPage && !isTvPairingPage && !hasProfileContentBreadcrumbs(englishPath) && <RouteBreadcrumbs />}
           <PublicRouter selectedCountry={selectedCountry} onCountryChange={handleCountryChange} />
         </main>
         {/* Footer - hidden on profile pages per reference (user.vue has no footer) */}
-        {!isProfilePage && (
+        {!isProfilePage && !isTvPairingPage && (
           <div className="w-full">
             <Suspense fallback={<FooterFallback />}>
               <Footer />
