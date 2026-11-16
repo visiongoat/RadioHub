@@ -100,16 +100,37 @@ export async function unpairTvDevice(userId: string, deviceId: string): Promise<
     await client.query("DELETE FROM cast_now_playing WHERE user_id=$1 AND device_id=$2", [userId,deviceId]);
   });
 }
+// Serialize one receiver's intent stream across workers. A new station replaces
+// undelivered playback intents; pause/resume issued afterwards retain their order.
+async function lockCastQueue(client: pg.PoolClient, userId: string, deviceId: string) {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [`cast:${userId}`,deviceId]);
+}
 export async function enqueueCastCommand(userId: string, deviceId: string, type: string, station: any, payload: any = null): Promise<boolean> {
-  const result = await getPostgresPool().query(`INSERT INTO cast_commands(id,user_id,device_id,type,station,timestamp,payload)
-    SELECT $1,$2,$3,$4,$5,$6,$7 WHERE EXISTS(SELECT 1 FROM user_devices WHERE user_id=$2 AND device_id=$3 AND is_active=true) RETURNING id`, [newId(),userId,deviceId,type,station ? JSON.stringify(station):null,Date.now(),payload ? JSON.stringify(payload):null]);
-  return !!result.rowCount;
+  return transaction(async client => {
+    await lockCastQueue(client,userId,deviceId);
+    const device = await client.query("SELECT id FROM user_devices WHERE user_id=$1 AND device_id=$2 AND is_active=true FOR SHARE",[userId,deviceId]);
+    if (!device.rowCount) return false;
+    if (type === 'cast:play') await client.query(`UPDATE cast_commands SET consumed=true
+      WHERE user_id=$1 AND device_id=$2 AND consumed=false AND type IN ('cast:play','cast:pause','cast:resume','cast:stop')`,[userId,deviceId]);
+    await client.query(`INSERT INTO cast_commands(id,user_id,device_id,type,station,timestamp,payload)
+      SELECT $1,$2,$3,$4,$5,GREATEST($6,COALESCE(MAX(timestamp)+1,$6)),$7 FROM cast_commands WHERE user_id=$2 AND device_id=$3 AND consumed=false`,
+      [newId(),userId,deviceId,type,station ? JSON.stringify(station):null,Date.now(),payload ? JSON.stringify(payload):null]);
+    return true;
+  });
 }
 export async function pollCastCommand(userId: string, deviceId: string): Promise<any> {
-  return shape((await getPostgresPool().query(`UPDATE cast_commands SET consumed=true WHERE id=(
-    SELECT c.id FROM cast_commands c JOIN user_devices d ON d.user_id=c.user_id AND d.device_id=c.device_id AND d.is_active=true
-    WHERE c.user_id=$1 AND c.device_id=$2 AND c.consumed=false AND c.created_at>now()-interval '1 day'
-    ORDER BY c.timestamp,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1) RETURNING *`, [userId,deviceId])).rows[0]);
+  return transaction(async client => {
+    await lockCastQueue(client,userId,deviceId);
+    // Also compact queues written by older deployed workers before this release.
+    await client.query(`UPDATE cast_commands c SET consumed=true WHERE c.user_id=$1 AND c.device_id=$2 AND c.consumed=false
+      AND (c.created_at<=now()-interval '2 minutes' OR (c.type IN ('cast:play','cast:pause','cast:resume','cast:stop') AND EXISTS (
+        SELECT 1 FROM cast_commands newer WHERE newer.user_id=c.user_id AND newer.device_id=c.device_id
+        AND newer.consumed=false AND newer.type='cast:play' AND (newer.timestamp,newer.id)>(c.timestamp,c.id))))`,[userId,deviceId]);
+    return shape((await client.query(`UPDATE cast_commands SET consumed=true WHERE id=(
+      SELECT c.id FROM cast_commands c JOIN user_devices d ON d.user_id=c.user_id AND d.device_id=c.device_id AND d.is_active=true
+      WHERE c.user_id=$1 AND c.device_id=$2 AND c.consumed=false AND c.created_at>now()-interval '2 minutes'
+      ORDER BY c.timestamp,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1) RETURNING *`, [userId,deviceId])).rows[0]);
+  });
 }
 export async function saveCastNowPlaying(userId: string, input: any): Promise<void> {
   await getPostgresPool().query(`INSERT INTO cast_now_playing(id,user_id,device_id,platform,station_name,title,artist,is_playing)

@@ -38,6 +38,29 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
     assert.equal(command.type,'cast:volume');assert.equal(command.payload.volumeDelta,.125);
     assert.equal(command.station,null);assert.equal(await tv.pollCastCommand(owner,device),null);
   });
+  it('replaces pending station history with the latest selection and keeps subsequent controls',async()=>{
+    const owner=await user(),device=await pairedDevice(owner),otherDevice=await pairedDevice(owner);
+    await tv.enqueueCastCommand(owner,otherDevice,'cast:play',{name:'Other TV'});
+    for(const name of ['Old A','Old B','Kıyı Caz']) {
+      await tv.enqueueCastCommand(owner,device,'cast:play',{name});
+      if(name==='Old A')await tv.enqueueCastCommand(owner,device,'cast:pause',null);
+    }
+    await tv.enqueueCastCommand(owner,device,'cast:pause',null);
+    assert.equal((await tv.pollCastCommand(owner,device)).station.name,'Kıyı Caz');
+    assert.equal((await tv.pollCastCommand(owner,device)).type,'cast:pause');
+    assert.equal(await tv.pollCastCommand(owner,device),null);
+    assert.equal((await tv.pollCastCommand(owner,otherDevice)).station.name,'Other TV');
+  });
+  it('compacts legacy queues before delivering a station and expires abandoned requests',async()=>{
+    const owner=await user(),device=await pairedDevice(owner);
+    for(let index=0;index<3;index++)await pool.query(`INSERT INTO cast_commands(id,user_id,device_id,type,station,timestamp)
+      VALUES($1,$2,$3,'cast:play',$4,$5)`,[randomUUID(),owner,device,JSON.stringify({name:`Station ${index}`}),Date.now()+index]);
+    assert.equal((await tv.pollCastCommand(owner,device)).station.name,'Station 2');
+    assert.equal(await tv.pollCastCommand(owner,device),null);
+    await tv.enqueueCastCommand(owner,device,'cast:play',{name:'Expired'});
+    await pool.query("UPDATE cast_commands SET created_at=now()-interval '3 minutes' WHERE user_id=$1",[owner]);
+    assert.equal(await tv.pollCastCommand(owner,device),null);
+  });
   it('serializes code generation per device, enforcing five subscription requests/hour',async()=>{
     const device=randomUUID();const codes=await Promise.all(Array.from({length:10},()=>tv.createTvCode('login',device,'tizen')));
     assert.equal(new Set(codes.map(code=>code.code)).size,10);
