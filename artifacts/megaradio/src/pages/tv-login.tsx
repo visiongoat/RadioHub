@@ -1,3 +1,4 @@
+import {tvReceiverQuery} from '@/lib/safe-auth-return';
 import {useEffect,useRef,useState} from 'react';
 import {Tv,Check,ShieldCheck,Smartphone,UserRound,Loader2,ArrowLeft} from 'lucide-react';
 import {useAuth} from '@/hooks/useAuth';
@@ -13,9 +14,8 @@ export default function TvLogin(){
  const lock=useRef(false),request=useRef<AbortController|null>(null),revision=useRef(0),owner=user?._id;
  useEffect(()=>{const values=new URLSearchParams(window.location.search).getAll('code');if(values.length===1&&/^\d{6}$/.test(values[0]))setCode(values[0]);else if(values.length)setError(c.invalid);},[]);
  useEffect(()=>{revision.current++;request.current?.abort();lock.current=false;setBusy(false);setLinked('');setError('');return()=>{revision.current++;request.current?.abort();};},[owner]);
- const initial=new URLSearchParams(window.location.search),receiver=initial.get('receiver')||'',application=initial.get('application')||'';
- const local=code===initial.get('code')&&/^uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(receiver)&&['MgRadioDev.MegaRadioTVAPP','lJoKY533ah.MegaRadioTVAPP'].includes(application);
- const binding=local?`&receiver=${encodeURIComponent(receiver)}&application=${encodeURIComponent(application)}`:'';
+ const initial=new URLSearchParams(window.location.search);
+ const binding=code===initial.get('code')?tvReceiverQuery(initial):'';
  const target=code?`?code=${code}${binding}`:'';
  const returnUrl=`${window.location.pathname}${target}`;
  const login=`${getLocalizedUrl('/login')}?returnTo=${encodeURIComponent(returnUrl)}`;

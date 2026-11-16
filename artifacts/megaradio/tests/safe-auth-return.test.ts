@@ -35,3 +35,9 @@ describe('same-origin auth return targets', () => {
     expect(tvPairingLoginReturnTo('/\\external.example', '?code=123456')).toBe('/');
   });
 });
+
+ it('keeps only a known paired receiver on the header login return',()=>{
+ const receiver='uuid:5196ead7-40d7-481f-8739-ff866eb19fba',application='MgRadioDev.MegaRadioTVAPP';
+ expect(tvPairingLoginReturnTo('/tr/tv','?code=123456&receiver='+encodeURIComponent(receiver)+'&application='+application+'&auth_token=secret')).toBe('/tr/tv?code=123456&receiver='+encodeURIComponent(receiver)+'&application='+application);
+ expect(tvPairingLoginReturnTo('/tr/tv','?code=123456&receiver='+encodeURIComponent(receiver)+'&application=OtherApp')).toBe('/tr/tv?code=123456');
+ });
