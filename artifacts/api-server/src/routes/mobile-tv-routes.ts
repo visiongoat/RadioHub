@@ -1,3 +1,4 @@
+import {parseTvDeviceCommand} from '../utils/tv-device-command';
 import type { Express } from "express";
 import { stationVisibilityFields } from '../utils/station-visibility';
 import { findActiveAuthToken, revokeAuthToken, revokeUserAuthTokens } from '../data/auth-token-store';
@@ -759,6 +760,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       res.json({
         command: command.type,
         station: command.station ?? null,
+        volumeDelta: command.payload?.volumeDelta,
         timestamp: command.timestamp,
       });
     } catch (err: any) {
@@ -810,13 +812,11 @@ If you have any questions about this privacy policy or our data practices, pleas
       const userId = await resolveCastUserId(req);
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });
 
-      const { deviceId, type, station } = req.body;
+      const { deviceId } = req.body;
       if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
-
-      const VALID_TYPES = ['cast:play', 'cast:pause', 'cast:resume', 'cast:stop'];
-      if (!type || !VALID_TYPES.includes(type)) {
-        return void res.status(400).json({ error: `type must be one of: ${VALID_TYPES.join(', ')}` });
-      }
+      const command=parseTvDeviceCommand(req.body);
+      if(!command)return void res.status(400).json({error:'Invalid cast command'});
+      const {type,station,payload}=command;
 
       // Verify this device belongs to the calling user
       const device = await findTvDevice(userId, deviceId);
@@ -824,7 +824,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(404).json({ error: 'Device not found or not paired to this account' });
       }
 
-      if (!await enqueueCastCommand(userId, deviceId, type, station)) return void res.status(404).json({ error: 'Device not found or not paired to this account' });
+      if (!await enqueueCastCommand(userId, deviceId, type, station,payload)) return void res.status(404).json({ error: 'Device not found or not paired to this account' });
 
       res.json({ ok: true });
     } catch (err: any) {
