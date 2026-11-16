@@ -33,9 +33,9 @@ export const castSessions = pgTable('cast_sessions', {
   uniqueIndex('cast_sessions_pending_code').on(t.pairingCode).where(sql`${t.status}='waiting_for_pair'`),
   index('cast_sessions_owner').on(t.userId,t.status,t.expiresAt), index('cast_sessions_expiry').on(t.expiresAt)]);
 export const castCommands = pgTable('cast_commands', {
-  id: text('id').primaryKey(), userId: owner(), deviceId: text('device_id').notNull(), type: text('type').notNull(), station: jsonb('station'),
+  id: text('id').primaryKey(), userId: owner(), deviceId: text('device_id').notNull(), type: text('type').notNull(), payload: jsonb('payload').$type<{volumeDelta?:number}>(), station: jsonb('station'),
   timestamp: bigint('timestamp', { mode: 'number' }).notNull(), consumed: boolean('consumed').notNull().default(false), createdAt: date('created_at').notNull().defaultNow(),
-}, t => [check('cast_commands_type_check', sql`${t.type} IN ('cast:play','cast:pause','cast:resume','cast:stop')`),
+}, t => [check('cast_commands_type_check', sql`${t.type} IN ('cast:play','cast:pause','cast:resume','cast:stop','cast:volume')`),
   index('cast_commands_poll').on(t.userId,t.deviceId,t.timestamp,t.id).where(sql`${t.consumed}=false`), index('cast_commands_expiry').on(t.createdAt)]);
 export const castNowPlaying = pgTable('cast_now_playing', {
   id: text('id').primaryKey(), userId: owner(), deviceId: text('device_id').notNull(), platform: text('platform').notNull().default('other'),
