@@ -16,6 +16,16 @@ describe('TV pairing confirmation',()=>{
   await act(async()=>complete(new Response(JSON.stringify({success:true,deviceName:'Samsung TV'}),{status:200})));
   expect(screen.getByRole('heading',{name:'Your TV is connected'})).toBeInTheDocument();expect(window.location.search).toBe('');
  });
+ it('preserves only a known receiver through the app and login handoff',()=>{
+  const receiver='uuid:5196ead7-40d7-481f-8739-ff866eb19fba',application='MgRadioDev.MegaRadioTVAPP';
+  window.history.replaceState(null,'','/en/tv?code=123456&receiver='+encodeURIComponent(receiver)+'&application='+application);
+  auth.isAuthenticated=false;render(<TvLogin/>);
+  const href=screen.getByRole('link',{name:'Open in MegaRadio'}).getAttribute('href')!;
+  expect(href).toContain('receiver='+encodeURIComponent(receiver));expect(href).toContain('application='+application);
+  expect(screen.getByRole('link',{name:'Sign in or create an account'}).getAttribute('href')).toContain('receiver%3D');
+  fireEvent.change(screen.getByLabelText('TV code'),{target:{value:'654321'}});
+  expect(screen.getByRole('link',{name:'Open in MegaRadio'})).toHaveAttribute('href','megaradio://tv?code=654321');
+ });
  it('times out a stalled request and allows a deliberate retry',async()=>{
   vi.useFakeTimers();vi.stubGlobal('fetch',vi.fn((_url,options)=>new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError'))))));
   render(<TvLogin/>);fireEvent.click(screen.getByRole('button',{name:'Sign in on this TV'}));

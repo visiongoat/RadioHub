@@ -18,11 +18,16 @@ export function withAuthReturnTo(destination: string, returnTo: string | null | 
   return url.pathname + url.search + url.hash;
 }
 
+export function tvReceiverQuery(params:URLSearchParams):string {
+  const receiver=params.get('receiver')||'',application=params.get('application')||'';
+  return /^uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(receiver)&&['MgRadioDev.MegaRadioTVAPP','lJoKY533ah.MegaRadioTVAPP'].includes(application)?`&receiver=${encodeURIComponent(receiver)}&application=${encodeURIComponent(application)}`:'';
+}
+
 /** The header's router location has no query. Keep only the TV's valid pairing
- * code across login; never copy OAuth tokens or unrelated query parameters. */
+ * code and known receiver across login; never copy OAuth tokens or unrelated query parameters. */
 export function tvPairingLoginReturnTo(pathname: string, search: string): string {
   const target = safeAuthReturnTo(pathname) || '/';
   if (!/^\/(?:[a-z]{2}\/)?tv\/?$/.test(target)) return target;
   const code = new URLSearchParams(search).get('code');
-  return code && /^\d{6}$/.test(code) ? `${target}?code=${code}` : target;
+  return code && /^\d{6}$/.test(code) ? `${target}?code=${code}${tvReceiverQuery(new URLSearchParams(search))}` : target;
 }
