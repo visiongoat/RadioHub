@@ -29,6 +29,15 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
   async function user(){const id=`tv-user-${randomUUID()}`;await pool.query("INSERT INTO users(id,username,email,full_name) VALUES($1,$1,$2,'TV integration')",[id,`${id}@example.invalid`]);return id;}
   async function pairedDevice(userId:string){const deviceId=randomUUID();const code=await tv.createTvCode('login',deviceId,'tizen');await tv.activateTvLogin(code.code,userId);return deviceId;}
 
+  it('queues relative volume only for the account owning the TV, with one-time delivery',async()=>{
+    const owner=await user(),other=await user(),device=await pairedDevice(owner);
+    assert.equal(await tv.enqueueCastCommand(other,device,'cast:volume',null,{volumeDelta:.125}),false);
+    assert.equal(await tv.enqueueCastCommand(owner,device,'cast:volume',null,{volumeDelta:.125}),true);
+    assert.equal(await tv.pollCastCommand(other,device),null);
+    const command=await tv.pollCastCommand(owner,device);
+    assert.equal(command.type,'cast:volume');assert.equal(command.payload.volumeDelta,.125);
+    assert.equal(command.station,null);assert.equal(await tv.pollCastCommand(owner,device),null);
+  });
   it('serializes code generation per device, enforcing five subscription requests/hour',async()=>{
     const device=randomUUID();const codes=await Promise.all(Array.from({length:10},()=>tv.createTvCode('login',device,'tizen')));
     assert.equal(new Set(codes.map(code=>code.code)).size,10);

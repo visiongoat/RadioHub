@@ -100,9 +100,9 @@ export async function unpairTvDevice(userId: string, deviceId: string): Promise<
     await client.query("DELETE FROM cast_now_playing WHERE user_id=$1 AND device_id=$2", [userId,deviceId]);
   });
 }
-export async function enqueueCastCommand(userId: string, deviceId: string, type: string, station: any): Promise<boolean> {
-  const result = await getPostgresPool().query(`INSERT INTO cast_commands(id,user_id,device_id,type,station,timestamp)
-    SELECT $1,$2,$3,$4,$5,$6 WHERE EXISTS(SELECT 1 FROM user_devices WHERE user_id=$2 AND device_id=$3 AND is_active=true) RETURNING id`, [newId(),userId,deviceId,type,station ? JSON.stringify(station):null,Date.now()]);
+export async function enqueueCastCommand(userId: string, deviceId: string, type: string, station: any, payload: any = null): Promise<boolean> {
+  const result = await getPostgresPool().query(`INSERT INTO cast_commands(id,user_id,device_id,type,station,timestamp,payload)
+    SELECT $1,$2,$3,$4,$5,$6,$7 WHERE EXISTS(SELECT 1 FROM user_devices WHERE user_id=$2 AND device_id=$3 AND is_active=true) RETURNING id`, [newId(),userId,deviceId,type,station ? JSON.stringify(station):null,Date.now(),payload ? JSON.stringify(payload):null]);
   return !!result.rowCount;
 }
 export async function pollCastCommand(userId: string, deviceId: string): Promise<any> {
