@@ -505,7 +505,7 @@ function PlayerWrapper() {
       <BreadcrumbOverrideProvider>
       <div className={`${isMessagesPage ? 'h-[100dvh] min-h-0 overflow-hidden' : 'min-h-screen overflow-x-hidden'} bg-[#0E0E0E] radio-theme flex flex-col w-full`}>
         {/* Header with centered content - header itself is full-width for background */}
-        <Suspense fallback={<RadioHeaderFallback />}>
+        {!isTvPairingPage && <Suspense fallback={<RadioHeaderFallback />}>
           <RadioHeader 
             profileLayout={isProfilePage}
             showAddStationModal={showAddStationModal}
@@ -513,9 +513,9 @@ function PlayerWrapper() {
             selectedCountry={selectedCountry}
             onCountryChange={handleCountryChange}
           />
-        </Suspense>
+        </Suspense>}
         {/* Main content area - pages handle their own max-width for full-bleed hero support */}
-        <main className={`pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px] flex-1 w-full ${isMessagesPage ? 'box-border min-h-0 overflow-hidden' : ''}`}>
+        <main className={`${isTvPairingPage ? '' : 'pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px]'} flex-1 w-full ${isMessagesPage ? 'box-border min-h-0 overflow-hidden' : ''}`}>
           {/* Task #371: visible breadcrumb trail on every non-home page —
               client-side counterpart to the SSR breadcrumb in
               api-server/seo-renderer.ts so the BreadcrumbList JSON-LD always
