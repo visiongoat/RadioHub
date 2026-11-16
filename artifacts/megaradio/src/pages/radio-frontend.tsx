@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { homeStationPageOptions, selectPopularHomeStations } from '@/lib/home-station-query';
+import { homeStationPageOptions } from '@/lib/home-station-query';
 import { OPEN_HOME_SEARCH, type HomeSearchOpenEvent } from '@/lib/home-search';
 import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { useAvailableStationSnapshots } from '@/hooks/useAvailableStationSnapshots';
@@ -729,7 +729,7 @@ export default function RadioFrontend({
   const { data: popularStationsData, isPending: popularStationsPending } = useQuery({
     ...homeStationPageOptions(selectedCountry),
     enabled: countryReady,
-    select: selectPopularHomeStations,
+    select: (page) => page.stations,
   });
 
   // PERF: `extendedPopularStationsData` removed — it duplicated the exact same
