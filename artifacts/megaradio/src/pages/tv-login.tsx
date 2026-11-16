@@ -13,7 +13,11 @@ export default function TvLogin(){
  const lock=useRef(false),request=useRef<AbortController|null>(null),revision=useRef(0),owner=user?._id;
  useEffect(()=>{const values=new URLSearchParams(window.location.search).getAll('code');if(values.length===1&&/^\d{6}$/.test(values[0]))setCode(values[0]);else if(values.length)setError(c.invalid);},[]);
  useEffect(()=>{revision.current++;request.current?.abort();lock.current=false;setBusy(false);setLinked('');setError('');return()=>{revision.current++;request.current?.abort();};},[owner]);
- const returnUrl=`${window.location.pathname}${code?`?code=${code}`:''}`;
+ const initial=new URLSearchParams(window.location.search),receiver=initial.get('receiver')||'',application=initial.get('application')||'';
+ const local=code===initial.get('code')&&/^uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(receiver)&&['MgRadioDev.MegaRadioTVAPP','lJoKY533ah.MegaRadioTVAPP'].includes(application);
+ const binding=local?`&receiver=${encodeURIComponent(receiver)}&application=${encodeURIComponent(application)}`:'';
+ const target=code?`?code=${code}${binding}`:'';
+ const returnUrl=`${window.location.pathname}${target}`;
  const login=`${getLocalizedUrl('/login')}?returnTo=${encodeURIComponent(returnUrl)}`;
  const signup=`${getLocalizedUrl('/signup')}?returnTo=${encodeURIComponent(returnUrl)}`;
  const confirm=async()=>{
@@ -34,7 +38,7 @@ export default function TvLogin(){
    <div className="mega-tv-symbol">{success?<Check size={36}/>:<Tv size={36}/>}</div>
    <h1 id="tv-link-title" aria-live="polite">{success?c.success:c.title}</h1><p className="mega-tv-subtitle">{success?c.done:c.intro}</p>
    {success?<><div className="mega-tv-account"><Tv size={25}/><div><strong>{linked||'TV'}</strong><span>{account?.fullName||account?.username||account?.email}</span></div><Check size={22}/></div><a className="mega-tv-primary" href={getLocalizedUrl('/')}>{c.finish}</a></>:<>
-    <a className="mega-tv-app" href={`megaradio://tv${code?`?code=${code}`:''}`}><Smartphone size={21}/>{c.openApp}</a><p className="mega-tv-separator">{c.web}</p>
+    <a className="mega-tv-app" href={`megaradio://tv${target}`}><Smartphone size={21}/>{c.openApp}</a><p className="mega-tv-separator">{c.web}</p>
     <form onSubmit={event=>{event.preventDefault();void confirm();}}>
      <label htmlFor="tv-code">{c.code}</label><input id="tv-code" aria-describedby="tv-code-hint" data-testid="tv-pairing-code" value={code} onChange={event=>{if(lock.current)return;setCode(event.target.value.replace(/\D/g,'').slice(0,6));setError('');}} placeholder="000000" inputMode="numeric" autoComplete="off" maxLength={6} pattern="[0-9]{6}" disabled={busy}/>
      <p id="tv-code-hint" className="mega-tv-hint">{c.hint}</p>
