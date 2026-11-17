@@ -38,6 +38,65 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
     assert.equal(command.type,'cast:volume');assert.equal(command.payload.volumeDelta,.125);
     assert.equal(command.station,null);assert.equal(await tv.pollCastCommand(owner,device),null);
   });
+  async function pairExistingDevice(userId:string,deviceId:string){
+    const code=await tv.createTvCode('login',deviceId,'tizen');
+    return tv.activateTvLogin(code.code,userId);
+  }
+  it('delivers a paired phone to another signed-in profile without replacing either account',async()=>{
+    const phone=await user(),receiver=await user(),stranger=await user(),device=await pairedDevice(phone);
+    const login=await pairExistingDevice(receiver,device);
+    const tokensBefore=(await pool.query('SELECT token,user_id FROM auth_tokens WHERE user_id=ANY($1) ORDER BY token',[[phone,receiver]])).rows;
+    assert.equal(await tv.enqueueCastCommand(phone,device,'cast:play',{name:'Shared radio'}),true);
+    assert.equal(await tv.pollCastCommand(stranger,device),null);
+    assert.equal((await tv.pollCastCommand(receiver,device)).station.name,'Shared radio');
+    assert.equal(await tv.pollCastCommand(phone,device),null);
+    assert.equal((await tv.getTvCode('login',login.code,device)).userId,receiver);
+    assert.deepEqual((await pool.query('SELECT token,user_id FROM auth_tokens WHERE user_id=ANY($1) ORDER BY token',[[phone,receiver]])).rows,tokensBefore);
+    await tv.saveCastNowPlaying(receiver,{deviceId:device,stationName:'Shared radio',isPlaying:true});
+    const status=await tv.getCastNowPlaying(phone,device);
+    assert.equal(status.stationName,'Shared radio');assert.equal(status.isPlaying,true);
+    assert.equal(status.userId,undefined);assert.equal(await tv.getCastNowPlaying(stranger,device),null);
+    await tv.saveCastNowPlaying(stranger,{deviceId:device,stationName:'Spoofed',isPlaying:true});
+    assert.equal((await tv.getCastNowPlaying(phone,device)).stationName,'Shared radio');
+  });
+  it('shares physical receiver presence and latest playback only among paired accounts',async()=>{
+    const first=await user(),second=await user(),device=await pairedDevice(first);
+    await pairExistingDevice(second,device);
+    await pool.query("UPDATE user_devices SET last_seen_at=now()-interval '1 day' WHERE user_id=$1",[first]);
+    await tv.touchTvDevice(second,device);
+    assert.ok(Date.now()-new Date((await tv.listTvDevices(first))[0].lastSeenAt).getTime()<5000);
+    await tv.saveCastNowPlaying(first,{deviceId:device,stationName:'Previous'});
+    await pool.query("UPDATE cast_now_playing SET updated_at=now()-interval '1 day' WHERE user_id=$1",[first]);
+    await tv.saveCastNowPlaying(second,{deviceId:device,stationName:'Current',isPlaying:true});
+    assert.equal((await tv.getCastNowPlaying(first,device)).stationName,'Current');
+    await tv.unpairTvDevice(first,device);
+    assert.equal(await tv.getCastNowPlaying(first,device),null);
+    assert.equal((await tv.listTvDevices(first)).length,0);
+    assert.equal((await tv.getCastNowPlaying(second,device)).stationName,'Current');
+  });
+  it('keeps one device-wide latest selection and delivers controls once across paired pollers',async()=>{
+    const first=await user(),second=await user(),device=await pairedDevice(first);
+    await pairExistingDevice(second,device);
+    await tv.enqueueCastCommand(first,device,'cast:play',{name:'Old'});
+    await tv.enqueueCastCommand(first,device,'cast:pause',null);
+    await tv.enqueueCastCommand(second,device,'cast:play',{name:'Newest'});
+    await tv.enqueueCastCommand(first,device,'cast:resume',null);
+    const commands=(await Promise.all(Array.from({length:10},(_,i)=>tv.pollCastCommand(i%2?first:second,device)))).filter(Boolean);
+    assert.equal(commands.length,2);assert.equal(new Set(commands.map(c=>c.id)).size,2);
+    assert.equal(commands.find(c=>c.type==='cast:play').station.name,'Newest');
+    assert.ok(commands.some(c=>c.type==='cast:resume'));
+  });
+  it('revokes a sender without blocking the remaining paired receiver',async()=>{
+    const first=await user(),second=await user(),device=await pairedDevice(first);
+    await pairExistingDevice(second,device);
+    await tv.enqueueCastCommand(first,device,'cast:play',{name:'Revoked'});
+    await tv.unpairTvDevice(first,device);
+    assert.equal(await tv.pollCastCommand(second,device),null);
+    assert.equal(await tv.enqueueCastCommand(first,device,'cast:play',{name:'Denied'}),false);
+    await tv.enqueueCastCommand(second,device,'cast:play',{name:'Allowed'});
+    assert.equal(await tv.pollCastCommand(first,device),null);
+    assert.equal((await tv.pollCastCommand(second,device)).station.name,'Allowed');
+  });
   it('replaces pending station history with the latest selection and keeps subsequent controls',async()=>{
     const owner=await user(),device=await pairedDevice(owner),otherDevice=await pairedDevice(owner);
     await tv.enqueueCastCommand(owner,otherDevice,'cast:play',{name:'Other TV'});
