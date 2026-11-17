@@ -449,6 +449,13 @@
       "idx": 63,
       "tag": "0059_tv_relative_volume",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "when": 1794944263817,
+      "idx": 64,
+      "tag": "0060_tv_device_cast_scope",
+      "breakpoints": true
     }
   ]
 }
