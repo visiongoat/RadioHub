@@ -58,6 +58,60 @@
       "codec": "H.264 Main",
       "fps": 24,
       "silent": true
+    },
+    {
+      "file": "fireplace-1080.mp4",
+      "bytes": 75355811,
+      "sha256": "c6b7ecea5c2282785b8c87cc15b129ef71a3b231970fc69d3f983f06b3c21b39",
+      "seconds": 117,
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "outputSize": [
+        1920,
+        1080
+      ],
+      "upscaled": false,
+      "codec": "H.264 High",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "techno-1080.mp4",
+      "bytes": 34447107,
+      "sha256": "bc7ff35c6ac3caac1748f8c906f8e72815f03b3a4b19d4b213ce94ef3d9bb863",
+      "seconds": 117,
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "outputSize": [
+        1920,
+        1080
+      ],
+      "upscaled": false,
+      "codec": "H.264 High",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "nature-1080.mp4",
+      "bytes": 27357725,
+      "sha256": "bcb28a41f3cea8ed4aeeb3871bdc1383d7e9eda4855214a0c09a7947082bb055",
+      "seconds": 117,
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "outputSize": [
+        1920,
+        1080
+      ],
+      "upscaled": false,
+      "codec": "H.264 High",
+      "fps": 24,
+      "silent": true
     }
   ]
 }
