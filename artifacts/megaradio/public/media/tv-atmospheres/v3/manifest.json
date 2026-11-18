@@ -1,0 +1,128 @@
+{
+  "version": 3,
+  "themes": [
+    "pop",
+    "city",
+    "concert"
+  ],
+  "source": "AI generated native Full HD, no upscale",
+  "files": [
+    {
+      "file": "city-1080.mp4",
+      "resolution": "1920x1080",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        38.47,
+        41.34
+      ],
+      "bytes": 52838152,
+      "sha256": "30bf050f6a9de76eab08d1d6a058874351eedafe11ecd12ac03fae4c31128e4f"
+    },
+    {
+      "file": "city-480.mp4",
+      "resolution": "854x480",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        38.52,
+        41.32
+      ],
+      "bytes": 7650088,
+      "sha256": "4c85b002fe31800443147fb14cfdce64014a149306eee4ce607797afb926c1b6"
+    },
+    {
+      "file": "city-720.mp4",
+      "resolution": "1280x720",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        38.52,
+        41.33
+      ],
+      "bytes": 15770129,
+      "sha256": "2b6db4c2411a8820a48f8c400d489ff76198d33e1007e6afa6193d7623dd4783"
+    },
+    {
+      "file": "concert-1080.mp4",
+      "resolution": "1920x1080",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        55.25,
+        57.47
+      ],
+      "bytes": 41567854,
+      "sha256": "88fa849f7ca59ab61b49009ce0cd5ecdee2a7d5712789d5aabfad45ab80e71a6"
+    },
+    {
+      "file": "concert-480.mp4",
+      "resolution": "854x480",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        55.33,
+        57.56
+      ],
+      "bytes": 7461190,
+      "sha256": "3abddc14011204bff4d464180601ab81f89efdb823235bd141ce172e9c70cd84"
+    },
+    {
+      "file": "concert-720.mp4",
+      "resolution": "1280x720",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        55.3,
+        57.55
+      ],
+      "bytes": 14164953,
+      "sha256": "c35eaf12fb2b7cdab0cba526aa5c95c6e96635fa73b4ed6ec27f0db6e84ba11c"
+    },
+    {
+      "file": "pop-1080.mp4",
+      "resolution": "1920x1080",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        44.47,
+        53.87
+      ],
+      "bytes": 37045220,
+      "sha256": "b30150ddd2661bc9b45eeab59410eb8971bea9987477d1439cf55e56a3f15a35"
+    },
+    {
+      "file": "pop-480.mp4",
+      "resolution": "854x480",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        44.44,
+        53.93
+      ],
+      "bytes": 7600138,
+      "sha256": "1dd3b50e1395df0fd5e5696b723be44d125bfb71e8892fcb4dfdf35a9244e6c9"
+    },
+    {
+      "file": "pop-720.mp4",
+      "resolution": "1280x720",
+      "seconds": 120,
+      "decodedSamples": 120,
+      "silent": true,
+      "lumaRange": [
+        44.47,
+        53.94
+      ],
+      "bytes": 13510093,
+      "sha256": "c3649de1680d167ba2ad1d558f286d5e9d5d260afad47811490b73c103aaa79d"
+    }
+  ]
+}
