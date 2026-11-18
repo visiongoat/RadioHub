@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
-import { completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken, listSubscriptionPlans } from "../data/postgres-tv-store";
+import { bindTvSubscriptionCheckout, completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken, listSubscriptionPlans } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
 import {
   pgApplySubscriptionEvent,
@@ -155,10 +155,20 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
     app.use(path, setCorsStarHeaders);
   }
 
+  // Authenticate supplied credentials; retain compatibility with older guest TV clients.
+  const optionalTvAuth = (req: Request, res: Response, next: () => void) => {
+    if (req.headers.authorization || (req.session as any)?.user || (req.session as any)?.userId || (req as any).user) {
+      return requireAuth(req, res, next);
+    }
+    next();
+  };
+  const tvViewer = (req: Request): string => String((req.session as any)?.user?.userId || (req.session as any)?.userId || (req as any).userId || (req as any).user?.id || '');
+
   // ── TV device requests a 6-digit subscription PIN ──────────────────────────
   // Public (CORS *). The TV app shows this code and the user enters it on the
   // web activate page to link their subscription purchase.
-  app.post("/api/subscription/tv/code", async (req: Request, res: Response) => {
+  app.post("/api/subscription/tv/code", optionalTvAuth, async (req: Request, res: Response) => {
+    res.set({"Cache-Control":"private, no-store", "CDN-Cache-Control":"no-store", "Cloudflare-CDN-Cache-Control":"no-store"});
     try {
       const { deviceId, platform = "other" } = req.body;
       if (!deviceId || typeof deviceId !== "string") {
@@ -168,14 +178,23 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "platform must be tizen, webos, or other" });
       }
 
-      const { code, expiresAt } = await createTvCode('subscription', deviceId, platform);
+      const selectedPlan = req.body.plan;
+      const accountOwnerId = tvViewer(req);
+      if (selectedPlan && (!accountOwnerId || !['premium_monthly','premium_yearly','premium_lifetime'].includes(selectedPlan))) {
+        return void res.status(accountOwnerId ? 400 : 401).json({ error: 'Sign in and select a valid Premium plan' });
+      }
+      const { code, expiresAt } = await createTvCode('subscription', deviceId, platform,
+        selectedPlan ? {userId: accountOwnerId, plan: selectedPlan} : undefined);
 
       logger.log(`[TV SUB] Code ${code} generated for device ${deviceId} (${platform})`);
 
       res.json({
         success: true,
         code,
-        activationUrl: `${WEB_BASE_URL}/activate?code=${code}`,
+        activationUrl: `${WEB_BASE_URL}/activate?code=${code}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan)}` : ""}`,
+        accountBound: !!selectedPlan,
+        accountOwnerId: selectedPlan ? accountOwnerId : undefined,
+        plan: selectedPlan || undefined,
         expiresIn: 600,
         expiresAt: expiresAt.toISOString(),
       });
@@ -187,7 +206,8 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
   // ── TV polls for subscription code status ──────────────────────────────────
   // Returns `pending` until the Stripe webhook fires and marks it `completed`.
-  app.get("/api/subscription/tv/code/:code/status", async (req: Request, res: Response) => {
+  app.get("/api/subscription/tv/code/:code/status", optionalTvAuth, async (req: Request, res: Response) => {
+    res.set({"Cache-Control":"private, no-store", "CDN-Cache-Control":"no-store", "Cloudflare-CDN-Cache-Control":"no-store"});
     try {
       const { code } = req.params;
       const { deviceId } = req.query as { deviceId?: string };
@@ -211,6 +231,18 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       // 404 causes TV to treat it as "still pending" and poll forever).
       if (tvCode.status === "expired") {
         return void res.json({ status: "expired" });
+      }
+
+      // Bound codes never mint a replacement TV session or disclose the owner's profile.
+      if (tvCode.purchaseOwnerId) {
+        const viewer = tvViewer(req);
+        const accountMatch = !!viewer && viewer === String(tvCode.userId);
+        if (!webCaller && !accountMatch) return void res.status(403).json({error:'TV account changed'});
+        return void res.json({
+          status: tvCode.status === 'completed' ? 'activated' : 'pending',
+          accountBound: true, accountMatch, plan: tvCode.plan,
+          ...(!webCaller && accountMatch ? {accountOwnerId: viewer} : {}),
+        });
       }
 
       // Activated — build full response including a TV auth token so the TV can
@@ -282,6 +314,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         const code = await getTvCode('subscription', tvCode);
         if (!code || code.status !== 'pending') {
           return void res.status(400).json({ error: "TV code is invalid or expired" });
+        }
+        if (!await bindTvSubscriptionCheckout(code.id, String(userId), plan)) {
+          return void res.status(409).json({ error: 'TV_ACCOUNT_OR_PLAN_MISMATCH' });
         }
         validatedTvCodeId = code.id;
       }

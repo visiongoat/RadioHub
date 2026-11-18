@@ -498,6 +498,8 @@ function PlayerWrapper() {
   // Reference: Profile pages do NOT have footer (user.vue layout)
   const isProfilePage = englishPath === '/profile' || englishPath.startsWith('/profile/');
   const isTvPairingPage = englishPath === '/tv';
+  const isTvPurchasePage = englishPath === '/activate' || englishPath === '/activate/success';
+  const isStandaloneTvFlow = isTvPairingPage || isTvPurchasePage;
   const isMessagesPage = englishPath === '/profile/messages' || englishPath.startsWith('/profile/messages/');
 
   return (
@@ -505,7 +507,7 @@ function PlayerWrapper() {
       <BreadcrumbOverrideProvider>
       <div className={`${isMessagesPage ? 'h-[100dvh] min-h-0 overflow-hidden' : 'min-h-screen overflow-x-hidden'} bg-[#0E0E0E] radio-theme flex flex-col w-full`}>
         {/* Header with centered content - header itself is full-width for background */}
-        {!isTvPairingPage && <Suspense fallback={<RadioHeaderFallback />}>
+        {!isStandaloneTvFlow && <Suspense fallback={<RadioHeaderFallback />}>
           <RadioHeader 
             profileLayout={isProfilePage}
             showAddStationModal={showAddStationModal}
@@ -515,16 +517,16 @@ function PlayerWrapper() {
           />
         </Suspense>}
         {/* Main content area - pages handle their own max-width for full-bleed hero support */}
-        <main className={`${isTvPairingPage ? '' : 'pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px]'} flex-1 w-full ${isMessagesPage ? 'box-border min-h-0 overflow-hidden' : ''}`}>
+        <main className={`${isStandaloneTvFlow ? '' : 'pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px]'} flex-1 w-full ${isMessagesPage ? 'box-border min-h-0 overflow-hidden' : ''}`}>
           {/* Task #371: visible breadcrumb trail on every non-home page —
               client-side counterpart to the SSR breadcrumb in
               api-server/seo-renderer.ts so the BreadcrumbList JSON-LD always
               has matching visible links post-hydration. */}
-          {!isMessagesPage && !isTvPairingPage && !hasProfileContentBreadcrumbs(englishPath) && <RouteBreadcrumbs />}
+          {!isMessagesPage && !isStandaloneTvFlow && !hasProfileContentBreadcrumbs(englishPath) && <RouteBreadcrumbs />}
           <PublicRouter selectedCountry={selectedCountry} onCountryChange={handleCountryChange} />
         </main>
         {/* Footer - hidden on profile pages per reference (user.vue has no footer) */}
-        {!isProfilePage && !isTvPairingPage && (
+        {!isProfilePage && !isStandaloneTvFlow && (
           <div className="w-full">
             <Suspense fallback={<FooterFallback />}>
               <Footer />

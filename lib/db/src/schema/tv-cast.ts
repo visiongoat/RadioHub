@@ -9,6 +9,7 @@ export const tvDeviceCodes = pgTable('tv_device_codes', {
   id: text('id').primaryKey(), kind: text('kind').notNull(), code: text('code').notNull(),
   deviceId: text('device_id').notNull(), platform: text('platform').notNull().default('other'),
   status: text('status').notNull().default('pending'), userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  purchaseOwnerId: text('purchase_owner_id').references(() => users.id, { onDelete: 'cascade' }),
   token: text('token'), plan: text('plan'), stripeSessionId: text('stripe_session_id'),
   expiresAt: date('expires_at').notNull(), createdAt: date('created_at').notNull().defaultNow(), completedAt: date('completed_at'),
 }, t => [

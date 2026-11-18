@@ -27,7 +27,7 @@ async function mintTvToken(client: pg.PoolClient, userId: string, deviceName: st
 export type TvCodeKind = "login" | "subscription";
 export type StripePlanId = "remove_ads" | "premium_monthly" | "premium_yearly" | "premium_lifetime";
 
-export async function createTvCode(kind: TvCodeKind, deviceId: string, platform: string): Promise<any> {
+export async function createTvCode(kind: TvCodeKind, deviceId: string, platform: string, purchase?: { userId: string; plan: string }): Promise<any> {
   return transaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [`tv-code:${kind}`,deviceId]);
     if (kind === "subscription") {
@@ -36,8 +36,8 @@ export async function createTvCode(kind: TvCodeKind, deviceId: string, platform:
     }
     await client.query("UPDATE tv_device_codes SET status='expired' WHERE kind=$1 AND status<>'expired' AND (expires_at<=now() OR (device_id=$2 AND status='pending'))", [kind,deviceId]);
     for (let attempt = 0; attempt < 30; attempt++) {
-      const result = await client.query(`INSERT INTO tv_device_codes(id,kind,code,device_id,platform,expires_at)
-        VALUES($1,$2,$3,$4,$5,now()+interval '10 minutes') ON CONFLICT DO NOTHING RETURNING *`, [newId(),kind,String(randomInt(100000,1000000)),deviceId,platform]);
+      const result = await client.query(`INSERT INTO tv_device_codes(id,kind,code,device_id,platform,user_id,plan,purchase_owner_id,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$6,now()+interval '10 minutes') ON CONFLICT DO NOTHING RETURNING *`, [newId(),kind,String(randomInt(100000,1000000)),deviceId,platform,purchase?.userId || null,purchase?.plan || null]);
       if (result.rowCount) return shape(result.rows[0]);
     }
     throw Object.assign(new Error("Unable to generate unique code. Try again."), { statusCode: 503 });
@@ -64,9 +64,17 @@ export async function activateTvLogin(code: string, userId: string): Promise<any
     return shape(updated.rows[0]);
   });
 }
+/** Atomically reserve the checkout owner and plan before contacting a payment provider. */
+export async function bindTvSubscriptionCheckout(codeId: string, userId: string, plan: string): Promise<boolean> {
+  const result = await getPostgresPool().query(`UPDATE tv_device_codes SET user_id=$2,plan=$3
+    WHERE id=$1 AND kind='subscription' AND status='pending' AND expires_at>now()
+    AND (user_id IS NULL OR user_id=$2) AND (plan IS NULL OR plan=$3) RETURNING id`, [codeId,userId,plan]);
+  return !!result.rowCount;
+}
 export async function completeTvSubscription(code: string, userId: string, plan: string, sessionId: string, codeId?: string, checkoutCreatedAt?: Date): Promise<void> {
   await getPostgresPool().query(`UPDATE tv_device_codes SET status='completed',user_id=$2,plan=$3,stripe_session_id=$4,completed_at=now()
     WHERE kind='subscription' AND code=$1 AND status='pending' AND expires_at>now()
+      AND (user_id IS NULL OR user_id=$2) AND (plan IS NULL OR plan=$3)
       AND ($5::text IS NULL OR id=$5) AND ($5::text IS NOT NULL OR $6::timestamptz IS NULL OR created_at<=$6+interval '1 second')`, [code,userId,plan,sessionId,codeId||null,checkoutCreatedAt||null]);
 }
 export async function tvSubscriptionToken(codeId: string, deviceId: string): Promise<string | undefined> {
