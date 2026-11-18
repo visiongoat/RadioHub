@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "loopSeconds": 13,
+  "attribution": "Created for MegaRadio using Higgsfield Seedance 2.5; circular crossfade and H.264 encoding by MegaRadio.",
+  "generationJobs": [
+    "71eccaf5-7780-48f3-b019-94dec2400f7b",
+    "ef64d9da-2015-4c65-b492-4b7799b40f9e",
+    "b070d05b-acc1-41b7-bc51-c89b31936671"
+  ],
+  "files": [
+    {
+      "file": "fireplace-480.mp4",
+      "sha256": "285a52a6b8ffa0ec1d5c380944a770b0fac47958b337f32a703cb915c3efcac9",
+      "bytes": 1695107,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "fireplace-720.mp4",
+      "sha256": "29b365fefc440e4a213aa3af730a7eba02c397cbe1af5be0d82acfb0e6b6a74f",
+      "bytes": 3044780,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "nature-480.mp4",
+      "sha256": "af82ea35fc8f1f73ce97f63df77cafa10096ac9a50ef112227e062a3eefacff7",
+      "bytes": 330349,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "nature-720.mp4",
+      "sha256": "11e7956de6cca75f5f1c03a7a0b456e604d7ddde707dcc021b1fa03c25e63cfe",
+      "bytes": 679848,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "techno-480.mp4",
+      "sha256": "857d7c2d8c2620f5e7b9f9ab896dd007813433ef35e053f99ec63a977179ae49",
+      "bytes": 536014,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "techno-720.mp4",
+      "sha256": "1c705622db46a0fc9fe32c75503fc64d76382cca50fb7d4d25da9d7d96dd7c3a",
+      "bytes": 1008990,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    }
+  ]
+}
