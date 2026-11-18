@@ -41,6 +41,12 @@ export function serveStatic(app: Express, distPath = path.resolve(import.meta.di
     );
   }
 
+  // The TV package contains posters only; versioned videos stream from our edge.
+  app.use('/media/tv-atmospheres', express.static(path.join(distPath, 'media/tv-atmospheres'), {
+    etag:true, lastModified:true, maxAge:'1y', immutable:true,
+    setHeaders:(res)=>{res.set({'Access-Control-Allow-Origin':'*','Access-Control-Expose-Headers':'Content-Length, Content-Range, Accept-Ranges','X-Content-Type-Options':'nosniff'});},
+  }));
+
   const staticFiles = express.static(distPath, {
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) revalidateSuccessfulHtml(res);

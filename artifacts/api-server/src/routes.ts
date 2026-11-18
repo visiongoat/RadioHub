@@ -1,3 +1,4 @@
+import {registerTvAtmosphereRoutes} from './routes/tv-atmosphere-routes';
 import {registerStationChatRoutes} from './routes/station-chat-routes';
 import { ACTIVE_UI_LANGUAGES, isActiveUiLanguage } from '@workspace/seo-shared/seo-config';
 import { registerTvDiagnosticRoutes } from './routes/tv-diagnostics-routes';
@@ -762,6 +763,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerUserAuthRoutes(app, deps);
   registerMobileTvRoutes(app, deps);
   registerTvVersionRoutes(app, deps);
+  registerTvAtmosphereRoutes(app);
   registerTvTelemetryRoutes(app, deps);
   registerTvDiagnosticRoutes(app, requireAdmin);
   await registerTranslationKeyRoutes(app, deps);
