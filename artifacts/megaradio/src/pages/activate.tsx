@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
-import {Check,Loader2,Music2} from 'lucide-react';
+import {Check,Loader2} from 'lucide-react';
 import {useAuth} from '@/hooks/useAuth';
 import {apiRequest} from '@/lib/queryClient';
 import {logoutAccount} from '@/lib/logout';
@@ -48,7 +48,7 @@ export default function ActivatePage(){
   <section className="relative mx-auto w-full max-w-[480px] overflow-hidden rounded-[24px] border border-[#353035] bg-[#101010] shadow-2xl">
    <div className="pointer-events-none absolute inset-x-0 top-0 h-[250px] bg-cover bg-right-top" style={{backgroundImage:'linear-gradient(0deg,#101010,transparent 95%),url(/images/premium/tv-purchase-hero.png)'}} />
    <div className="relative px-6 pb-6 pt-[155px] sm:px-8">
-    <div className="mb-5 flex items-center"><div className="mr-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#FF4199]"><Music2 size={29}/></div><div><strong className="block text-xl font-medium">MegaRadio</strong><span className="text-sm text-[#f5c366]">Premium</span></div></div>
+    <div className="mb-5 flex items-center"><img className="mr-3 h-12 w-12" src="/images/premium/premium-brand.svg" alt=""/><div><strong className="block text-xl font-medium">MegaRadio</strong><span className="text-sm text-[#FBBC05]">Premium</span></div></div>
     <h1 className="text-2xl font-medium leading-tight">{title}</h1>
     <p className="mt-3 text-sm leading-6 text-[#bcb5c1]">{invalid?text.expiredText:completed?text.completedText:text.intro}</p>
     {authLoading||status.isPending&&/^\d{6}$/.test(tvCode)?<Loader2 className="mx-auto my-8 animate-spin" aria-label={text.waiting}/>:invalid||completed?null:<>
