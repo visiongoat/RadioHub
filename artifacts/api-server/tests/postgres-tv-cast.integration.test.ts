@@ -29,6 +29,25 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
   async function user(){const id=`tv-user-${randomUUID()}`;await pool.query("INSERT INTO users(id,username,email,full_name) VALUES($1,$1,$2,'TV integration')",[id,`${id}@example.invalid`]);return id;}
   async function pairedDevice(userId:string){const deviceId=randomUUID();const code=await tv.createTvCode('login',deviceId,'tizen');await tv.activateTvLogin(code.code,userId);return deviceId;}
 
+  it('binds a Premium QR to one account and selected plan atomically',async()=>{
+    const owner=await user(),other=await user();
+    const code=await tv.createTvCode('subscription',randomUUID(),'tizen',{userId:owner,plan:'premium_yearly'});
+    assert.equal(code.purchaseOwnerId,owner);
+    assert.equal(await tv.bindTvSubscriptionCheckout(code.id,other,'premium_yearly'),false);
+    assert.equal(await tv.bindTvSubscriptionCheckout(code.id,owner,'premium_monthly'),false);
+    await tv.completeTvSubscription(code.code,other,'premium_yearly','wrong-account',code.id);
+    await tv.completeTvSubscription(code.code,owner,'premium_monthly','wrong-plan',code.id);
+    assert.equal((await tv.getTvCode('subscription',code.code)).status,'pending');
+    assert.equal(await tv.bindTvSubscriptionCheckout(code.id,owner,'premium_yearly'),true);
+    await tv.completeTvSubscription(code.code,owner,'premium_yearly','verified-payment',code.id);
+    assert.equal((await tv.getTvCode('subscription',code.code)).status,'completed');
+  });
+  it('only one account can claim an older guest checkout code',async()=>{
+    const first=await user(),second=await user();
+    const code=await tv.createTvCode('subscription',randomUUID(),'tizen');
+    const results=await Promise.all([tv.bindTvSubscriptionCheckout(code.id,first,'premium_yearly'),tv.bindTvSubscriptionCheckout(code.id,second,'premium_yearly')]);
+    assert.equal(results.filter(Boolean).length,1);
+  });
   it('queues relative volume only for the account owning the TV, with one-time delivery',async()=>{
     const owner=await user(),other=await user(),device=await pairedDevice(owner);
     assert.equal(await tv.enqueueCastCommand(other,device,'cast:volume',null,{volumeDelta:.125}),false);

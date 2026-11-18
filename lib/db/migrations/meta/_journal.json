@@ -456,6 +456,13 @@
       "idx": 64,
       "tag": "0060_tv_device_cast_scope",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "when": 1795030000000,
+      "idx": 65,
+      "tag": "0062_tv_purchase_owner",
+      "breakpoints": true
     }
   ]
 }
