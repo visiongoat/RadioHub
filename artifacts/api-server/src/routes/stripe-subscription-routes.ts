@@ -168,6 +168,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   // Public (CORS *). The TV app shows this code and the user enters it on the
   // web activate page to link their subscription purchase.
   app.post("/api/subscription/tv/code", optionalTvAuth, async (req: Request, res: Response) => {
+    res.set({"Cache-Control":"private, no-store", "CDN-Cache-Control":"no-store", "Cloudflare-CDN-Cache-Control":"no-store"});
     try {
       const { deviceId, platform = "other" } = req.body;
       if (!deviceId || typeof deviceId !== "string") {
@@ -206,6 +207,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   // ── TV polls for subscription code status ──────────────────────────────────
   // Returns `pending` until the Stripe webhook fires and marks it `completed`.
   app.get("/api/subscription/tv/code/:code/status", optionalTvAuth, async (req: Request, res: Response) => {
+    res.set({"Cache-Control":"private, no-store", "CDN-Cache-Control":"no-store", "Cloudflare-CDN-Cache-Control":"no-store"});
     try {
       const { code } = req.params;
       const { deviceId } = req.query as { deviceId?: string };

@@ -26,12 +26,12 @@ after(async()=>{server.closeAllConnections();await new Promise<void>(resolve=>se
 beforeEach(()=>{row={id:'issuance',code:'123456',status:'pending',userId:'owner',purchaseOwnerId:'owner',plan:'premium_yearly'};reserved=true;minted=0;created=null;});
 async function request(path:string,owner?:string,body?:any){const response=await fetch(base+path,{method:body?'POST':'GET',headers:{...(owner?{Authorization:'Bearer '+owner}:{}),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {response,data:await response.json()};}
 test('binds selected plan to the authenticated TV account without a session token in the QR',async()=>{
- const {data}=await request('/api/subscription/tv/code','owner',{deviceId:'device',plan:'premium_yearly'});
- assert.deepEqual(created,{userId:'owner',plan:'premium_yearly'});assert.equal(data.accountBound,true);assert.equal(data.accountOwnerId,'owner');assert.equal(new URL(data.activationUrl).searchParams.get('plan'),'premium_yearly');assert.equal(data.token,undefined);
+ const {data,response}=await request('/api/subscription/tv/code','owner',{deviceId:'device',plan:'premium_yearly'});
+ assert.match(response.headers.get('cache-control')!,/private.*no-store/);assert.deepEqual(created,{userId:'owner',plan:'premium_yearly'});assert.equal(data.accountBound,true);assert.equal(data.accountOwnerId,'owner');assert.equal(new URL(data.activationUrl).searchParams.get('plan'),'premium_yearly');assert.equal(data.token,undefined);
 });
 test('rejects selecting a paid plan without authentication',async()=>{const {response}=await request('/api/subscription/tv/code',undefined,{deviceId:'device',plan:'premium_yearly'});assert.equal(response.status,401);assert.equal(created,null);});
 test('public browser status discloses neither account identity nor token; authenticated browser detects mismatch',async()=>{
- const guest=await request('/api/subscription/tv/code/123456/status?deviceId=web-activate');assert.equal(guest.data.accountMatch,false);assert.equal(guest.data.accountOwnerId,undefined);assert.equal(guest.data.user,undefined);
+ const guest=await request('/api/subscription/tv/code/123456/status?deviceId=web-activate');assert.match(guest.response.headers.get('cache-control')!,/private.*no-store/);assert.equal(guest.data.accountMatch,false);assert.equal(guest.data.accountOwnerId,undefined);assert.equal(guest.data.user,undefined);
  const other=await request('/api/subscription/tv/code/123456/status?deviceId=web-activate','other');assert.equal(other.data.accountMatch,false);
  const own=await request('/api/subscription/tv/code/123456/status?deviceId=web-activate','owner');assert.equal(own.data.accountMatch,true);assert.equal(minted,0);
 });
