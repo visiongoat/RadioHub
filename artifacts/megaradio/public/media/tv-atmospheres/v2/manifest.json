@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "loopSeconds": 117.0,
+  "sourceLoopSeconds": 13.0,
+  "cyclesPerStream": 9,
+  "reencoding": false,
+  "files": [
+    {
+      "file": "fireplace-480.mp4",
+      "bytes": 15251585,
+      "sha256": "bd4d78c172dee76e1e91792366255d4cb658d4873388bf08e1b50860b7c54db2",
+      "seconds": 117.0,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "fireplace-720.mp4",
+      "bytes": 27398623,
+      "sha256": "ed48270c57fdd01e71cdba94690d56a15d4d3960488e2ae6d17020cb1894cc8a",
+      "seconds": 117.0,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "nature-480.mp4",
+      "bytes": 2968703,
+      "sha256": "b4dc133d7e5e1a77032f0be11cad75c005dbeffe6ce8bd79c4d9f9c1e58f52d1",
+      "seconds": 117.0,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "nature-720.mp4",
+      "bytes": 6114187,
+      "sha256": "ab11d8cc196e9e41eee12385cb1010019351b35d2cc3b9baede831d1511024d8",
+      "seconds": 117.0,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "techno-480.mp4",
+      "bytes": 4819732,
+      "sha256": "a5b0869af911627312db3c2c88d8adbdb95cc144fad4cef70698eaf2e8a3da37",
+      "seconds": 117.0,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    },
+    {
+      "file": "techno-720.mp4",
+      "bytes": 9076501,
+      "sha256": "df250bec27f466ccdf5e87266af6f6986936a7bb1b8f2a9051d1dbb0e0c3c3ea",
+      "seconds": 117.0,
+      "codec": "H.264 Main",
+      "fps": 24,
+      "silent": true
+    }
+  ]
+}
