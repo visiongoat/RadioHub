@@ -5,8 +5,13 @@ import {useAuth} from '@/hooks/useAuth';
 import {useSeoRouting} from '@/hooks/useSeoRouting';
 import {tvPairingCopy} from '@/lib/tv-pairing-copy';
 import './tv-login.css';
+import ActivatePage from './activate';
 
 export default function TvLogin(){
+ const params=new URLSearchParams(window.location.search);
+ return params.get('flow')==='premium'?<ActivatePage/>:<TvPairingPage/>;
+}
+function TvPairingPage(){
  const {user,isAuthenticated,isLoading:authLoading}=useAuth(),{currentLanguage,getLocalizedUrl}=useSeoRouting(),c=tvPairingCopy(currentLanguage||'en');
  const preview=import.meta.env.DEV?new URLSearchParams(window.location.search).get('preview'):null;
  const signedIn=preview?preview==='confirm'||preview==='success':isAuthenticated;

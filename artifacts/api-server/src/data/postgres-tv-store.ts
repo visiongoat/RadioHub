@@ -162,17 +162,17 @@ export async function pollCastCommand(userId: string, deviceId: string): Promise
 export async function saveCastNowPlaying(userId: string, input: any): Promise<void> {
   await transaction(async client => {
     await lockCastQueue(client,input.deviceId);
-    await client.query(`INSERT INTO cast_now_playing(id,user_id,device_id,platform,station_name,title,artist,is_playing)
-      SELECT $1,$2,$3,$4,$5,$6,$7,$8 WHERE EXISTS (
+    await client.query(`INSERT INTO cast_now_playing(id,user_id,device_id,platform,station_name,title,artist,is_playing,station_id,request_id)
+      SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 WHERE EXISTS (
         SELECT 1 FROM user_devices WHERE user_id=$2 AND device_id=$3 AND is_active=true)
       ON CONFLICT(user_id,device_id) DO UPDATE SET platform=EXCLUDED.platform,
-      station_name=EXCLUDED.station_name,title=EXCLUDED.title,artist=EXCLUDED.artist,is_playing=EXCLUDED.is_playing,updated_at=now()`,
-      [newId(),userId,input.deviceId,input.platform || "other",input.stationName ?? null,input.title ?? null,input.artist ?? null,input.isPlaying === true || input.isPlaying === "true"]);
+      station_name=EXCLUDED.station_name,title=EXCLUDED.title,artist=EXCLUDED.artist,is_playing=EXCLUDED.is_playing,station_id=EXCLUDED.station_id,request_id=EXCLUDED.request_id,updated_at=now()`,
+      [newId(),userId,input.deviceId,input.platform || "other",input.stationName ?? null,input.title ?? null,input.artist ?? null,input.isPlaying === true || input.isPlaying === "true",input.stationId ?? null,input.requestId ?? null]);
   });
 }
 export async function getCastNowPlaying(userId: string, deviceId: string): Promise<any> {
   // Return playback only, never the other signed-in account's identity or data.
-  return shape((await getPostgresPool().query(`SELECT np.device_id,np.platform,np.station_name,np.title,np.artist,np.is_playing,np.updated_at
+  return shape((await getPostgresPool().query(`SELECT np.device_id,np.platform,np.station_name,np.title,np.artist,np.is_playing,np.station_id,np.request_id,np.updated_at
     FROM cast_now_playing np JOIN user_devices reporter ON reporter.user_id=np.user_id AND reporter.device_id=np.device_id AND reporter.is_active=true
     WHERE np.device_id=$2 AND EXISTS (SELECT 1 FROM user_devices WHERE user_id=$1 AND device_id=$2 AND is_active=true)
     ORDER BY np.updated_at DESC,np.id DESC LIMIT 1`, [userId,deviceId])).rows[0]);

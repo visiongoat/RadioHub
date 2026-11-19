@@ -48,6 +48,16 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
     const results=await Promise.all([tv.bindTvSubscriptionCheckout(code.id,first,'premium_yearly'),tv.bindTvSubscriptionCheckout(code.id,second,'premium_yearly')]);
     assert.equal(results.filter(Boolean).length,1);
   });
+  it('carries a selected request through the paired device and actual playback report',async()=>{
+    const owner=await user(),other=await user(),device=await pairedDevice(owner),requestId='fixture-request-123456';
+    assert.equal(await tv.enqueueCastCommand(owner,device,'cast:play',{_id:'alias',name:'Cached name'},{requestId}),true);
+    const command=await tv.pollCastCommand(owner,device);assert.equal(command.payload.requestId,requestId);
+    await tv.saveCastNowPlaying(owner,{deviceId:device,stationId:'canonical',requestId,stationName:'Canonical name',isPlaying:true});
+    const status=await tv.getCastNowPlaying(owner,device);assert.equal(status.stationId,'canonical');assert.equal(status.requestId,requestId);assert.equal(status.isPlaying,true);
+    assert.equal(await tv.getCastNowPlaying(other,device),null);assert.equal(status.userId,undefined);
+    await tv.saveCastNowPlaying(owner,{deviceId:device,stationId:'manually-selected',stationName:'Manual',isPlaying:true});
+    assert.equal((await tv.getCastNowPlaying(owner,device)).requestId,null);
+  });
   it('queues relative volume only for the account owning the TV, with one-time delivery',async()=>{
     const owner=await user(),other=await user(),device=await pairedDevice(owner);
     assert.equal(await tv.enqueueCastCommand(other,device,'cast:volume',null,{volumeDelta:.125}),false);

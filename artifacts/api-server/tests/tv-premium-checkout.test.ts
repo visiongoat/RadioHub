@@ -49,3 +49,8 @@ test('native confirmation requires authentication and a verified entitlement; cl
  entitlement=false;const invalid=await request('/api/subscription/tv/code/123456/confirm-premium','other',{});assert.equal(invalid.response.status,409);assert.equal(minted,0);
  const bad=await request('/api/subscription/tv/code/12345/confirm-premium','owner',{});assert.equal(bad.response.status,400);
 });
+
+test('capable TV clients request Premium through the already-associated TV entry path',async()=>{
+ const {data}=await request('/api/subscription/tv/code','owner',{deviceId:'device',plan:'premium_yearly',appLinkFlow:'premium'});
+ const url=new URL(data.activationUrl);assert.equal(url.pathname,'/tv');assert.equal(url.searchParams.get('flow'),'premium');assert.equal(url.searchParams.get('code'),'123456');assert.equal(url.searchParams.get('plan'),'premium_yearly');
+});
