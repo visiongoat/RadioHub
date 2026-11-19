@@ -19,6 +19,14 @@ const translations={
 type CodeStatus={status:'pending'|'activated'|'expired'|'not_found';accountBound?:boolean;accountMatch?:boolean;plan?:string};
 export default function ActivatePage(){
  const {user,isLoading:authLoading}=useAuth();const {language}=useTranslation();
+ useEffect(()=>{
+  const root=document.documentElement,previousScheme=root.style.colorScheme;
+  const existing=document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  const meta=existing||document.createElement('meta'),previousColor=meta.content;
+  if(!existing){meta.name='theme-color';document.head.appendChild(meta);}
+  root.style.colorScheme='dark';meta.content='#0e0e0e';
+  return()=>{root.style.colorScheme=previousScheme;if(existing)meta.content=previousColor;else meta.remove();};
+ },[]);
  const text=translations[language as keyof typeof translations] || translations.en;const copy=subscriptionCopy(language);
  const params=new URLSearchParams(window.location.search);const tvCode=(params.get('code')||'').trim();
  const [selectedPlan,setSelectedPlan]=useState(params.get('plan')||'premium_yearly');
