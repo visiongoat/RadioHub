@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { pgApplySubscriptionEvent, pgFindPaddleSubscriptionUser, pgGetSubscription, pgRecordBillingEvent } from "../data/postgres-billing-store";
 
-export const PADDLE_PLANS = ["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"] as const;
+export const PADDLE_PLANS = ["remove_ads", "premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime"] as const;
 type Plan = typeof PADDLE_PLANS[number];
 type Data = Record<string, any>;
 const text = (value: unknown): string => typeof value === "string" ? value : "";
@@ -33,6 +33,7 @@ export function validPaddlePrice(plan: string, price: Data): boolean {
   if (price.status !== "active" || price.type === "custom") return false;
   if (price.quantity && (price.quantity.minimum > 1 || price.quantity.maximum < 1)) return false;
   if (plan === "premium_monthly") return cycle?.interval === "month" && cycle.frequency === 1;
+  if (plan === "premium_quarterly") return cycle?.interval === "month" && cycle.frequency === 3;
   if (plan === "premium_yearly") return cycle?.interval === "year" && cycle.frequency === 1;
   if (plan === "premium_lifetime") return cycle == null;
   return plan === "remove_ads"; // Existing configured ad-free plans may be recurring or one-time.

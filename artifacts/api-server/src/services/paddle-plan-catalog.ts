@@ -1,7 +1,7 @@
 import { validPaddlePrice } from "./paddle-billing";
 
 const envPriceKeys: Record<string, string> = {
-  remove_ads: "PADDLE_PRICE_REMOVE_ADS", premium_monthly: "PADDLE_PRICE_MONTHLY",
+  remove_ads: "PADDLE_PRICE_REMOVE_ADS", premium_monthly: "PADDLE_PRICE_MONTHLY", premium_quarterly: "PADDLE_PRICE_QUARTERLY",
   premium_yearly: "PADDLE_PRICE_ANNUAL", premium_lifetime: "PADDLE_PRICE_LIFETIME",
 };
 export function configuredPaddlePriceId(planId: string, plans: any[]): string | null {

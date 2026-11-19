@@ -57,6 +57,7 @@ function buildPricePlanMap() {
   const annual = process.env.STRIPE_PRICE_ANNUAL;
   const lifetime = process.env.STRIPE_PRICE_LIFETIME;
   if (monthly) STRIPE_PRICE_TO_PLAN[monthly] = "premium_monthly";
+  if (process.env.STRIPE_PRICE_QUARTERLY) STRIPE_PRICE_TO_PLAN[process.env.STRIPE_PRICE_QUARTERLY] = "premium_quarterly";
   if (annual) STRIPE_PRICE_TO_PLAN[annual] = "premium_yearly";
   if (lifetime) STRIPE_PRICE_TO_PLAN[lifetime] = "premium_lifetime";
 }
@@ -68,6 +69,8 @@ function normalizePlanForTv(plan: string) {
   switch (plan) {
     case "premium_monthly":
       return { tier: "premium", period: "monthly" };
+    case "premium_quarterly":
+      return { tier: "premium", period: "quarterly" };
     case "premium_yearly":
       return { tier: "premium", period: "annual" };
     case "premium_lifetime":
@@ -94,7 +97,7 @@ export function formatSubscriptionStatus(sub: Record<string, any>): Record<strin
   const { active } = subscriptionAccess(sub);
   const isPremium = active && ["premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime"].includes(sub.plan);
   if (!isPremium) return { tier: "free", status: "active", adFree: active && sub.plan === "remove_ads" };
-  const plan = sub.plan === "premium_monthly" ? "monthly" : sub.plan === "premium_yearly"
+  const plan = sub.plan === "premium_monthly" ? "monthly" : sub.plan === "premium_quarterly" ? "quarterly" : sub.plan === "premium_yearly"
     ? "annual" : sub.plan === "premium_lifetime" ? "lifetime" : sub.plan;
   const valid = ["active", "past_due", "canceled", "trialing"];
   const status = valid.includes(sub.subscriptionStatus)
@@ -122,7 +125,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
     const apiKey = process.env.PADDLE_API_KEY || "";
     const clientToken = process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN || "";
     const plans: Record<string, string | null> = {};
-    for (const plan of ["premium_monthly", "premium_yearly", "premium_lifetime", "remove_ads"]) {
+    for (const plan of ["premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime", "remove_ads"]) {
       plans[plan] = await getPaddlePriceId(plan);
     }
     return void res.json({
@@ -180,7 +183,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       const selectedPlan = req.body.plan;
       const accountOwnerId = tvViewer(req);
-      if (selectedPlan && (!accountOwnerId || !['premium_monthly','premium_yearly','premium_lifetime'].includes(selectedPlan))) {
+      if (selectedPlan && (!accountOwnerId || !['premium_monthly','premium_quarterly','premium_yearly','premium_lifetime'].includes(selectedPlan))) {
         return void res.status(accountOwnerId ? 400 : 401).json({ error: 'Sign in and select a valid Premium plan' });
       }
       const { code, expiresAt } = await createTvCode('subscription', deviceId, platform,
@@ -312,7 +315,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
     }
     const localePath = locale ? `/${locale}` : "";
 
-    const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"];
+    const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime"];
     if (!plan || !VALID_PLANS.includes(plan)) {
       return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
     }
@@ -413,6 +416,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         priceId =
           plan === "remove_ads"       ? process.env.STRIPE_PRICE_REMOVE_ADS || null :
           plan === "premium_monthly"  ? process.env.STRIPE_PRICE_MONTHLY    || null :
+          plan === "premium_quarterly" ? process.env.STRIPE_PRICE_QUARTERLY || null :
           plan === "premium_yearly"   ? process.env.STRIPE_PRICE_ANNUAL     || null :
           plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME   || null :
           null;
@@ -505,7 +509,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         const session = event.data.object as Stripe.Checkout.Session;
         const { userId, plan, tvCode, tvCodeId } = session.metadata || {};
 
-        if (!userId || !["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"].includes(plan || "")) {
+        if (!userId || !["remove_ads", "premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime"].includes(plan || "")) {
           logger.warn("[TV SUB] Webhook missing userId or plan in metadata");
           return void res.status(200).json({ received: true });
         }

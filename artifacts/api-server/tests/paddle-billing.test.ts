@@ -38,6 +38,22 @@ describe("Paddle entitlement decisions", () => {
     assert.equal(validPaddlePrice("premium_monthly", { ...price, type: "custom" }), false);
     assert.equal(validPaddlePrice("premium_lifetime", { ...price, billing_cycle: null }), true);
   });
+  it("accepts only a verified three-month recurring price for quarterly Premium", async () => {
+    const quarterly = { ...price, id: "pri_quarterly", billing_cycle: { interval: "month", frequency: 3 } };
+    assert.equal(validPaddlePrice("premium_quarterly", quarterly), true);
+    for (const cycle of [null, { interval: "month", frequency: 1 }, { interval: "year", frequency: 1 }]) {
+      assert.equal(validPaddlePrice("premium_quarterly", { ...quarterly, billing_cycle: cycle }), false);
+    }
+    assert.equal(validPaddlePrice("premium_monthly", quarterly), false);
+    const binding = signedPaddleCustomData(secret, { userId: "user-A", plan: "premium_quarterly", priceId: quarterly.id, tvCode: "123456", tvCodeId: "issuance-A" });
+    const result = await processPaddleEvent(event({ items: [{ price: quarterly, quantity: 1 }], custom_data: binding }), {
+      secret, getPriceId: async plan => plan === "premium_quarterly" ? quarterly.id : null,
+    });
+    assert.equal(result.outcome, "applied");
+    assert.equal(applications[0][1].plan, "premium_quarterly");
+    assert.equal(result.tv?.plan, "premium_quarterly");
+    assert.equal(applications[0][1].expiresAt.getTime() > Date.now(), true);
+  });
   it("does not grant an unsigned, forged or mismatched initial purchase", async () => {
     for (const data of [
       { custom_data: { userId: "user-A", plan: "premium_lifetime" } },
