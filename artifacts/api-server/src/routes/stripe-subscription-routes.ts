@@ -191,7 +191,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       res.json({
         success: true,
         code,
-        activationUrl: `${WEB_BASE_URL}/activate?code=${code}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan)}` : ""}`,
+        activationUrl: `${WEB_BASE_URL}${req.body.appLinkFlow==='premium'?'/tv?flow=premium&':'/activate?'}code=${code}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan)}` : ""}`,
         accountBound: !!selectedPlan,
         accountOwnerId: selectedPlan ? accountOwnerId : undefined,
         plan: selectedPlan || undefined,

@@ -7,3 +7,10 @@ test('relative TV volume accepts bounded finite numeric changes only',()=>{
  assert.equal(parseTvDeviceCommand({type:'other'}),null);
  assert.equal(parseTvDeviceCommand({type:'cast:pause'})!.type,'cast:pause');
 });
+
+test('play correlation is bounded and cannot be attached to volume or control payloads',()=>{
+ const requestId='fixture-request-123456';
+ assert.deepEqual(parseTvDeviceCommand({type:'cast:play',station:{_id:'radio'},requestId})!.payload,{requestId});
+ for(const requestId of ['',123,'x'.repeat(81),'../../unsafe'])assert.equal(parseTvDeviceCommand({type:'cast:play',requestId}),null);
+ assert.equal(parseTvDeviceCommand({type:'cast:pause',requestId})!.payload,null);
+});

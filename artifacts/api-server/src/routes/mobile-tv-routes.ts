@@ -761,6 +761,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         command: command.type,
         station: command.station ?? null,
         volumeDelta: command.payload?.volumeDelta,
+        requestId: command.payload?.requestId,
         timestamp: command.timestamp,
       });
     } catch (err: any) {
@@ -776,9 +777,11 @@ If you have any questions about this privacy policy or our data practices, pleas
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });
 
       const { deviceId, platform = 'other', stationName, title, artist, isPlaying } = req.body;
+      const stationId=typeof req.body.stationId==='string'&&req.body.stationId.length<=160?req.body.stationId:null;
+      const requestId=typeof req.body.requestId==='string'&&/^[-a-zA-Z0-9_]{16,80}$/.test(req.body.requestId)?req.body.requestId:null;
       if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
 
-      await saveCastNowPlaying(userId, { deviceId, platform, stationName, title, artist, isPlaying });
+      await saveCastNowPlaying(userId, { deviceId, platform, stationName, title, artist, isPlaying, stationId, requestId });
 
       res.json({ ok: true });
     } catch (err: any) {

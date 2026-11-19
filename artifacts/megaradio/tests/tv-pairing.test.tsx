@@ -4,6 +4,7 @@ import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
 const auth=vi.hoisted(()=>({user:{_id:'fixture-user',fullName:'Ada',email:'ada@example.test'},isAuthenticated:true,isLoading:false}));
 vi.mock('@/hooks/useAuth',()=>({useAuth:()=>auth}));
 vi.mock('@/hooks/useSeoRouting',()=>({useSeoRouting:()=>({currentLanguage:'en',getLocalizedUrl:(p:string)=>'/en'+p})}));
+vi.mock('../src/pages/activate',()=>({default:()=> <div data-testid="premium-continuation"/>}));
 import TvLogin from '../src/pages/tv-login';
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
 beforeEach(()=>{auth.user={_id:'fixture-user',fullName:'Ada',email:'ada@example.test'};auth.isAuthenticated=true;window.history.replaceState(null,'','/en/tv?code=123456');});
@@ -43,4 +44,10 @@ describe('TV pairing confirmation',()=>{
   const result=render(<TvLogin/>);fireEvent.click(screen.getByRole('button',{name:'Sign in on this TV'}));expect(await screen.findByRole('alert')).toHaveTextContent('expired');expect(screen.getByLabelText('TV code')).toHaveValue('123456');
   auth.isAuthenticated=false;result.rerender(<TvLogin/>);expect(screen.getByRole('link',{name:'Sign in or create an account'})).toHaveAttribute('href','/en/login?returnTo=%2Fen%2Ftv%3Fcode%3D123456');
  });
+});
+
+it('Premium intent on the TV link never opens the TV login confirmation',()=>{
+ window.history.replaceState(null,'','/en/tv?flow=premium&code=123456&plan=premium_yearly');render(<TvLogin/>);
+ expect(screen.getByTestId('premium-continuation')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Sign in on this TV'})).toBeNull();
+ expect(window.location.search).toContain('code=123456');
 });
