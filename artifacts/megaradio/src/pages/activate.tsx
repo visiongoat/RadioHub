@@ -19,6 +19,14 @@ const translations={
 type CodeStatus={status:'pending'|'activated'|'expired'|'not_found';accountBound?:boolean;accountMatch?:boolean;plan?:string};
 export default function ActivatePage(){
  const {user,isLoading:authLoading}=useAuth();const {language}=useTranslation();
+ useEffect(()=>{
+  const root=document.documentElement,previousScheme=root.style.colorScheme;
+  const existing=document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  const meta=existing||document.createElement('meta'),previousColor=meta.content;
+  if(!existing){meta.name='theme-color';document.head.appendChild(meta);}
+  root.style.colorScheme='dark';meta.content='#0e0e0e';
+  return()=>{root.style.colorScheme=previousScheme;if(existing)meta.content=previousColor;else meta.remove();};
+ },[]);
  const text=translations[language as keyof typeof translations] || translations.en;const copy=subscriptionCopy(language);
  const params=new URLSearchParams(window.location.search);const tvCode=(params.get('code')||'').trim();
  const [selectedPlan,setSelectedPlan]=useState(params.get('plan')||'premium_yearly');
@@ -46,10 +54,10 @@ export default function ActivatePage(){
  const completed=code?.status==='activated';
  const title=invalid?text.expired:completed?text.completed:text.title;
  async function switchAccount(){setSwitching(true);setSwitchError(false);try{await logoutAccount();window.location.assign(loginUrl);}catch{setSwitching(false);setSwitchError(true);}}
- return <main className="min-h-screen bg-[#0e0e0e] px-4 py-8 text-white sm:py-12" style={{fontFamily:'Ubuntu, sans-serif'}}>
-  <section className="relative mx-auto w-full max-w-[480px] overflow-hidden rounded-[24px] border border-[#353035] bg-[#101010] shadow-2xl">
-   <div className="pointer-events-none absolute inset-x-0 top-0 h-[250px] bg-cover bg-right-top" style={{backgroundImage:'linear-gradient(0deg,#101010,transparent 95%),url(/images/premium/tv-purchase-hero.png)'}} />
-   <div className="relative px-6 pb-6 pt-[155px] sm:px-8">
+ return <main className="min-h-screen bg-[#0e0e0e] text-white" style={{fontFamily:'Ubuntu, sans-serif'}}>
+  <section className="relative mx-auto w-full max-w-[640px] bg-[#0e0e0e]">
+   <div className="pointer-events-none absolute inset-x-0 top-0 h-[350px] bg-cover bg-right-top" style={{backgroundImage:'linear-gradient(0deg,#0e0e0e,transparent 95%),url(/images/premium/tv-purchase-hero.png)'}} />
+   <div className="relative px-6 pb-10 pt-[205px] sm:px-8">
     <div className="mb-5 flex items-center"><img className="mr-3 h-12 w-12" src="/images/premium/premium-brand.svg" alt=""/><div><strong className="block text-xl font-medium">MegaRadio</strong><span className="text-sm text-[#FBBC05]">Premium</span></div></div>
     <h1 className="text-2xl font-medium leading-tight">{title}</h1>
     <p className="mt-3 text-sm leading-6 text-[#bcb5c1]">{invalid?text.expiredText:completed?text.completedText:text.intro}</p>
@@ -57,7 +65,7 @@ export default function ActivatePage(){
     {authLoading||status.isPending&&/^\d{6}$/.test(tvCode)?<Loader2 className="mx-auto my-8 animate-spin" aria-label={text.waiting}/>:invalid||completed?null:<>
      <div className="my-5 flex items-center justify-between border-y border-[#302b32] py-3 text-sm"><span className="text-[#aaa2ae]">{text.code}</span><strong className="tracking-[4px]">{tvCode}</strong></div>
      {!user?<div className="space-y-4"><a className="block rounded-lg bg-[#FF4199] px-4 py-3 text-center font-medium" href={loginUrl}>{text.signin}</a><a className="block text-center text-sm text-[#FF83BA]" href={`/${language}/signup?returnTo=${encodeURIComponent(returnTo)}`}>{text.signup}</a></div>:<>
-      <div className="my-5 rounded-lg border border-[#38303b] bg-[#201c22] p-4"><p className="text-xs text-[#b9b0be]">{text.account}</p><strong className="mt-1 block break-all text-sm font-medium">{user.email || user.fullName || user.username}</strong>
+      <div className="my-6 border-b border-[#303030] pb-5"><p className="text-xs text-[#b9b0be]">{text.account}</p><strong className="mt-1 block break-all text-sm font-medium">{user.email || user.fullName || user.username}</strong>
        {mismatch&&<p role="alert" className="mt-3 text-sm leading-6 text-[#FF99C4]">{text.mismatch}</p>}
        <button className="mt-3 text-sm text-[#FF83BA] underline underline-offset-4 disabled:opacity-50" onClick={switchAccount} disabled={switching}>{text.switch}</button>
       </div>
