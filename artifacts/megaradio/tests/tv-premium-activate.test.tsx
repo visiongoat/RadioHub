@@ -35,3 +35,9 @@ it('carries the selected plan through phone sign-in rather than opening the app 
 it('expired or already used QR never offers another payment',async()=>{
  state.code='expired';mount();await screen.findByText('Kodun süresi doldu');expect(screen.queryByRole('button',{name:'Ödemeye devam et'})).toBeNull();expect(state.checkout).not.toHaveBeenCalled();
 });
+
+it('offers the installed app with the same TV code and plan, without starting checkout',async()=>{
+ mount();const link=await screen.findByRole('link',{name:'MegaRadio uygulamasında devam et'});
+ expect(link.getAttribute('href')).toBe('megaradio://activate?code=123456&plan=premium_yearly');
+ expect(state.checkout).not.toHaveBeenCalled();
+});

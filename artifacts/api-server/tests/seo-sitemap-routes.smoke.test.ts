@@ -462,9 +462,12 @@ for (const apiOnly of [false, true]) {
               const tvPaths = ['/tv', ...['en','es','fr','de','pt','it','ru','ar','zh','tr','ja','ko','hi','he','nl','pl'].map(lang=>`/${lang}/tv`)];
               const isTvPath = (path: string) => /^\/(?:[a-z]{2}\/)?tv$/.test(path);
               assert.deepEqual(paths.filter(isTvPath).sort(), tvPaths.sort());
-              // Preserve the exact previous AASA contract after removing only
-              // the explicitly added pairing routes, including app identity.
-              document.applinks.details[0].paths = paths.filter(path=>!isTvPath(path));
+              const premiumPaths = ['/activate', ...['en','es','fr','de','pt','it','ru','ar','zh','tr','ja','ko','hi','he'].map(lang=>`/${lang}/activate`)];
+              const isPremiumPath = (path: string) => /^\/(?:[a-z]{2}\/)?activate$/.test(path);
+              assert.deepEqual(paths.filter(isPremiumPath).sort(), premiumPaths.sort());
+              assert.ok(!paths.includes('/activate/*'));
+              // Preserve every previous content association and app identity.
+              document.applinks.details[0].paths = paths.filter(path=>!isTvPath(path)&&!isPremiumPath(path));
               assert.equal(createHash('sha256').update(JSON.stringify(document)).digest('hex'),
                 '171008f5e62971cf7c7d446f7f309ee8e7d8b9a56d5417434791ea56b6dac33e');
             }
