@@ -31,7 +31,7 @@ mock.module("../src/data/postgres-user-store", { namedExports: {
 mock.module("../src/data/postgres-tv-store", { namedExports: {
   listSubscriptionPlans: async () => plans, getSubscriptionPlan: async () => plans[0],
   bindTvSubscriptionCheckout: async () => true,
-  completeTvSubscription: async () => {}, createTvCode: async () => {},
+  confirmTvPremiumEntitlement: async () => false, completeTvSubscription: async () => {}, createTvCode: async () => {},
   getTvCode: async (kind: string, code: string, deviceId?: string) => {
     assert.equal(kind, "subscription");
     if (code !== "123456" || deviceId && deviceId !== "real-TV-device") return null;
