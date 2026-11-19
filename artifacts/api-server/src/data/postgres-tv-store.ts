@@ -71,6 +71,15 @@ export async function bindTvSubscriptionCheckout(codeId: string, userId: string,
     AND (user_id IS NULL OR user_id=$2) AND (plan IS NULL OR plan=$3) RETURNING id`, [codeId,userId,plan]);
   return !!result.rowCount;
 }
+/** Confirm an existing server-verified entitlement; never purchase, rebind or mint a TV token. */
+export async function confirmTvPremiumEntitlement(code:string,userId:string):Promise<boolean>{
+ const result=await getPostgresPool().query(`UPDATE tv_device_codes c SET status='completed',completed_at=COALESCE(c.completed_at,now())
+  FROM subscriptions s WHERE c.kind='subscription' AND c.code=$1 AND c.purchase_owner_id=$2 AND c.user_id=$2
+  AND c.status IN ('pending','completed') AND c.expires_at>now() AND s.user_id=$2 AND s.is_active=true
+  AND (s.plan='premium_lifetime' OR (s.plan IN ('premium_monthly','premium_quarterly','premium_yearly') AND s.expires_at>now()))
+  RETURNING c.id`,[code,userId]);
+ return !!result.rowCount;
+}
 export async function completeTvSubscription(code: string, userId: string, plan: string, sessionId: string, codeId?: string, checkoutCreatedAt?: Date): Promise<void> {
   await getPostgresPool().query(`UPDATE tv_device_codes SET status='completed',user_id=$2,plan=$3,stripe_session_id=$4,completed_at=now()
     WHERE kind='subscription' AND code=$1 AND status='pending' AND expires_at>now()

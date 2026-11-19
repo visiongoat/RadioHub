@@ -23,6 +23,8 @@ export default function ActivatePage(){
  const params=new URLSearchParams(window.location.search);const tvCode=(params.get('code')||'').trim();
  const [selectedPlan,setSelectedPlan]=useState(params.get('plan')||'premium_yearly');
  const [switching,setSwitching]=useState(false),[switchError,setSwitchError]=useState(false);
+ const openAppText=language==='tr'?'MegaRadio uygulamasında devam et':language==='de'?'In MegaRadio fortfahren':'Continue in MegaRadio';
+ const appUrl=`megaradio://activate?code=${encodeURIComponent(tvCode)}&plan=${encodeURIComponent(selectedPlan)}`;
  const returnTo=`/${language}/activate?code=${encodeURIComponent(tvCode)}&plan=${encodeURIComponent(selectedPlan)}`;
  const loginUrl=`/${language}/login?returnTo=${encodeURIComponent(returnTo)}`;
  const {loading,error,checkout}=useSubscriptionCheckout({extraBody:{tvCode},returnTo});
@@ -51,6 +53,7 @@ export default function ActivatePage(){
     <div className="mb-5 flex items-center"><img className="mr-3 h-12 w-12" src="/images/premium/premium-brand.svg" alt=""/><div><strong className="block text-xl font-medium">MegaRadio</strong><span className="text-sm text-[#FBBC05]">Premium</span></div></div>
     <h1 className="text-2xl font-medium leading-tight">{title}</h1>
     <p className="mt-3 text-sm leading-6 text-[#bcb5c1]">{invalid?text.expiredText:completed?text.completedText:text.intro}</p>
+    {!invalid&&!completed&&<a href={appUrl} className="mt-5 block rounded-lg border border-[#FF4199] px-4 py-3 text-center text-sm font-medium text-[#FF83BA]">{openAppText}</a>}
     {authLoading||status.isPending&&/^\d{6}$/.test(tvCode)?<Loader2 className="mx-auto my-8 animate-spin" aria-label={text.waiting}/>:invalid||completed?null:<>
      <div className="my-5 flex items-center justify-between border-y border-[#302b32] py-3 text-sm"><span className="text-[#aaa2ae]">{text.code}</span><strong className="tracking-[4px]">{tvCode}</strong></div>
      {!user?<div className="space-y-4"><a className="block rounded-lg bg-[#FF4199] px-4 py-3 text-center font-medium" href={loginUrl}>{text.signin}</a><a className="block text-center text-sm text-[#FF83BA]" href={`/${language}/signup?returnTo=${encodeURIComponent(returnTo)}`}>{text.signup}</a></div>:<>

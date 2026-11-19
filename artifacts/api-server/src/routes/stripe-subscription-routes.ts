@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
-import { bindTvSubscriptionCheckout, completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken, listSubscriptionPlans } from "../data/postgres-tv-store";
+import { confirmTvPremiumEntitlement, bindTvSubscriptionCheckout, completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken, listSubscriptionPlans } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
 import {
   pgApplySubscriptionEvent,
@@ -92,7 +92,7 @@ async function persistSubscription(
 
 export function formatSubscriptionStatus(sub: Record<string, any>): Record<string, unknown> {
   const { active } = subscriptionAccess(sub);
-  const isPremium = active && ["premium_monthly", "premium_yearly", "premium_lifetime"].includes(sub.plan);
+  const isPremium = active && ["premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime"].includes(sub.plan);
   if (!isPremium) return { tier: "free", status: "active", adFree: active && sub.plan === "remove_ads" };
   const plan = sub.plan === "premium_monthly" ? "monthly" : sub.plan === "premium_yearly"
     ? "annual" : sub.plan === "premium_lifetime" ? "lifetime" : sub.plan;
@@ -202,6 +202,18 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       logger.error("[TV SUB] Code generation error:", err.message);
       res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : "Failed to generate code" });
     }
+  });
+
+  // Native store purchases are verified through the existing IAP endpoint first.
+  app.post('/api/subscription/tv/code/:code/confirm-premium', requireAuth, async(req:Request,res:Response)=>{
+    res.set({'Cache-Control':'private, no-store','CDN-Cache-Control':'no-store'});
+    if(!/^\d{6}$/.test(String(req.params.code)))return void res.status(400).json({error:'INVALID_TV_CODE'});
+    const viewer=tvViewer(req);
+    if(!viewer)return void res.status(401).json({error:'SIGN_IN_REQUIRED'});
+    try{
+      if(!await confirmTvPremiumEntitlement(String(req.params.code),viewer))return void res.status(409).json({error:'TV_CODE_OR_ENTITLEMENT_MISMATCH'});
+      res.json({success:true,status:'activated'});
+    }catch{res.status(503).json({error:'TV_CONFIRMATION_UNAVAILABLE'});}
   });
 
   // ── TV polls for subscription code status ──────────────────────────────────

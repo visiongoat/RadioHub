@@ -20,3 +20,8 @@ test('TV confirmation is claimed without claiming OAuth or unrelated login route
  for(const path of ['/tv','/tr/tv','/de/tv','/en/tv'])assert.ok(paths.includes(path));
  assert.ok(!paths.includes('/tv/*'));assert.ok(!paths.includes('/api/auth/*'));
 });
+
+test('Premium continuation claims exact localized paths without intercepting payment callbacks',()=>{
+ const paths=mobileAppLinkPaths();for(const path of ['/activate','/tr/activate','/de/activate','/en/activate'])assert.ok(paths.includes(path));
+ for(const path of ['/activate/*','/activate/success','/checkout','/api/subscription/*'])assert.ok(!paths.includes(path));
+});

@@ -6,7 +6,7 @@ const SEGMENTS = ['station', 'stations', 'genre', 'genres', 'user', 'users', 'pr
 
 /** Match the content routes native clients handle, preserving legacy links. */
 export function mobileAppLinkPaths(): string[] {
-  const paths = new Set<string>(['/tv',...LANGUAGES.map(language=>`/${language}/tv`),'/nl/tv','/pl/tv']);
+  const paths = new Set<string>(['/activate',...LANGUAGES.map(language=>`/${language}/activate`),'/tv',...LANGUAGES.map(language=>`/${language}/tv`),'/nl/tv','/pl/tv']);
   for (const segment of SEGMENTS) {
     paths.add(`/${segment}/*`);
     paths.add(`/*/${segment}/*`);
