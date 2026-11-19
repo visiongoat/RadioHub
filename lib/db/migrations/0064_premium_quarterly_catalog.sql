@@ -7,5 +7,5 @@ ALTER TABLE stripe_subscription_plans ADD CONSTRAINT stripe_subscription_plans_p
 INSERT INTO stripe_subscription_plans
   (id,plan_id,paddle_price_id,label,description,currency,amount,is_active)
 VALUES ('premium_quarterly_catalog_20261119','premium_quarterly','pri_01m7swn71yk53d4ex5cqjzxpfq',
-        'Quarterly','Billed every 3 months, cancel anytime','eur',1199,true)
+        'Quarterly','Billed every 3 months, cancel anytime','eur',999,true)
 ON CONFLICT (plan_id) DO NOTHING;
