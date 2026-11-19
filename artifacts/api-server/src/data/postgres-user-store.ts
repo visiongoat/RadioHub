@@ -119,7 +119,7 @@ export async function pgListAdminUsers(options: AdminUserListOptions): Promise<{
   const effectiveAccess = `(s.is_active=true AND (s.plan='premium_lifetime' OR
     (s.plan='remove_ads' AND s.platform='paddle' AND s.provider_data->>'paddleBillingKind'='one_time'
       AND s.expires_at IS NULL AND NULLIF(s.paddle_subscription_id,'') IS NULL) OR
-    (s.plan=ANY(ARRAY['remove_ads','premium_monthly','premium_yearly']) AND s.expires_at>CURRENT_TIMESTAMP)))`;
+    (s.plan=ANY(ARRAY['remove_ads','premium_monthly','premium_quarterly','premium_yearly']) AND s.expires_at>CURRENT_TIMESTAMP)))`;
   if (options.plan === "none") {
     conditions.push(`NOT COALESCE(${effectiveAccess},false)`);
   } else if (options.plan === "any_premium") {

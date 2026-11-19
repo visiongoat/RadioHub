@@ -28,3 +28,12 @@ it('reactivation requires finite expiry and clears prior cancellation; lifetime 
  assert.equal(lifetime.isActive,true);assert.equal(lifetime.expiresAt,null);
  assert.equal(adminSubscriptionPatch({plan:'none',isActive:true},null,now).patch?.isActive,false);
 });
+
+it('quarterly access expires exactly like other recurring plans and cannot activate without verified expiry', () => {
+ const active = { plan:'premium_quarterly', isActive:true, expiresAt:'2026-12-01T00:00:00Z' };
+ assert.equal(subscriptionAccess(active,now.getTime()).active,true);
+ for(const expiresAt of [null,'invalid','2026-11-01T00:00:00Z']) assert.equal(subscriptionAccess({...active,expiresAt},now.getTime()).active,false);
+ assert.ok(adminSubscriptionPatch({plan:'premium_quarterly',expiresAt:null},null,now).error);
+ const result=adminSubscriptionPatch(active,null,now);
+ assert.equal(result.patch?.plan,'premium_quarterly');assert.equal(result.patch?.isActive,true);
+});

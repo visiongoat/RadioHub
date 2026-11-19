@@ -25,7 +25,7 @@ async function mintTvToken(client: pg.PoolClient, userId: string, deviceName: st
   return token;
 }
 export type TvCodeKind = "login" | "subscription";
-export type StripePlanId = "remove_ads" | "premium_monthly" | "premium_yearly" | "premium_lifetime";
+export type StripePlanId = "remove_ads" | "premium_monthly" | "premium_quarterly" | "premium_yearly" | "premium_lifetime";
 
 export async function createTvCode(kind: TvCodeKind, deviceId: string, platform: string, purchase?: { userId: string; plan: string }): Promise<any> {
   return transaction(async (client) => {

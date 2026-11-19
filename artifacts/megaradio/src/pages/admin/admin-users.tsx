@@ -42,7 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getAvatarUrl } from "@/lib/utils";
 
 interface UserSubscription {
-  plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
+  plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_quarterly' | 'premium_yearly' | 'premium_lifetime';
   platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'stripe' | 'paddle' | 'admin';
   productId?: string;
   transactionId?: string;
@@ -89,6 +89,7 @@ type PlanFilter =
   | "remove_ads"
   | "any_premium"
   | "premium_monthly"
+  | "premium_quarterly"
   | "premium_yearly"
   | "premium_lifetime";
 
@@ -98,6 +99,7 @@ const PLAN_FILTER_VALUES: readonly PlanFilter[] = [
   "remove_ads",
   "any_premium",
   "premium_monthly",
+  "premium_quarterly",
   "premium_yearly",
   "premium_lifetime",
 ] as const;
@@ -305,6 +307,7 @@ function matchesPlanFilter(
   if (filter === "any_premium") {
     return (
       plan === "premium_monthly" ||
+      plan === "premium_quarterly" ||
       plan === "premium_yearly" ||
       plan === "premium_lifetime"
     );
@@ -330,6 +333,7 @@ const PLAN_RANK: Record<string, number> = {
   none: 0,
   remove_ads: 1,
   premium_monthly: 2,
+  premium_quarterly: 2.5,
   premium_yearly: 3,
   premium_lifetime: 4,
 };
@@ -845,18 +849,21 @@ export default function AdminUsers() {
     const colors: Record<string, string> = {
       remove_ads: "bg-blue-100 text-blue-800 border-blue-300",
       premium_monthly: "bg-yellow-100 text-yellow-800 border-yellow-300",
+      premium_quarterly: "bg-yellow-100 text-yellow-800 border-yellow-300",
       premium_yearly: "bg-orange-100 text-orange-800 border-orange-300",
       premium_lifetime: "bg-purple-100 text-purple-800 border-purple-300",
     };
     const labels: Record<string, string> = {
       remove_ads: "No Ads",
       premium_monthly: "Premium (M)",
+      premium_quarterly: "Premium (3M)",
       premium_yearly: "Premium (Y)",
       premium_lifetime: "Lifetime",
     };
     const icons: Record<string, string> = {
       remove_ads: "🚫",
       premium_monthly: "⭐",
+      premium_quarterly: "⭐",
       premium_yearly: "⭐",
       premium_lifetime: "💎",
     };
@@ -922,6 +929,7 @@ export default function AdminUsers() {
                 <SelectItem value="remove_ads">Remove Ads</SelectItem>
                 <SelectItem value="any_premium">Any Premium</SelectItem>
                 <SelectItem value="premium_monthly">Premium · Monthly</SelectItem>
+                <SelectItem value="premium_quarterly">Premium · Quarterly</SelectItem>
                 <SelectItem value="premium_yearly">Premium · Yearly</SelectItem>
                 <SelectItem value="premium_lifetime">Premium · Lifetime</SelectItem>
               </SelectContent>
@@ -1611,6 +1619,7 @@ export default function AdminUsers() {
                         <option value="none">none (no plan)</option>
                         <option value="remove_ads">remove_ads</option>
                         <option value="premium_monthly">premium_monthly</option>
+                        <option value="premium_quarterly">premium_quarterly</option>
                         <option value="premium_yearly">premium_yearly</option>
                         <option value="premium_lifetime">premium_lifetime</option>
                       </select>

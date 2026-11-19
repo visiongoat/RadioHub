@@ -7,7 +7,7 @@ export interface SubscriptionAccessInput {
   paddleBillingKind?: 'one_time' | 'recurring' | null;
   paddleSubscriptionId?: string | null;
 }
-const timeLimitedPlans = new Set(['remove_ads', 'premium_monthly', 'premium_yearly']);
+const timeLimitedPlans = new Set(['remove_ads', 'premium_monthly', 'premium_quarterly', 'premium_yearly']);
 export function subscriptionAccess(subscription: SubscriptionAccessInput | null | undefined, now = Date.now()) {
   const plan = subscription?.plan || 'none';
   const expiry = subscription?.expiresAt ? new Date(subscription.expiresAt).getTime() : NaN;
