@@ -129,6 +129,10 @@ describe("Paddle checkout, portal and TV HTTP contracts", () => {
     assert.equal((await post("/api/webhooks/paddle", {}, false, { "paddle-signature": "invalid" })).status, 400);
   });
   it("uses expiry and a fixed entitlement allowlist in subscription status", () => {
+    const quarterly = { plan: "premium_quarterly", isActive: true, expiresAt: "2099-01-01T00:00:00Z" };
+    assert.equal(formatSubscriptionStatus(quarterly).tier, "premium");
+    assert.equal(formatSubscriptionStatus(quarterly).plan, "quarterly");
+    for (const expiresAt of [null, "invalid", "2020-01-01T00:00:00Z"]) assert.equal(formatSubscriptionStatus({ ...quarterly, expiresAt }).tier, "free");
     for (const sub of [
       { plan: "premium_monthly", isActive: true, expiresAt: "2020-01-01T00:00:00Z" },
       { plan: "arbitrary_admin", isActive: true },

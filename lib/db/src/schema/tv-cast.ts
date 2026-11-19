@@ -65,7 +65,7 @@ export const stripeSubscriptionPlans = pgTable('stripe_subscription_plans', {
   id: text('id').primaryKey(), planId: text('plan_id').notNull().unique(), stripePriceId: text('stripe_price_id').notNull().default(''),
   paddlePriceId: text('paddle_price_id'), label: text('label').notNull().default(''), description: text('description').notNull().default(''),
   currency: text('currency').notNull().default('usd'), amount: integer('amount').notNull().default(0), isActive: boolean('is_active').notNull().default(true), updatedAt: date('updated_at').notNull().defaultNow(),
-}, t => [check('stripe_subscription_plans_plan_id_check', sql`${t.planId} IN ('remove_ads','premium_monthly','premium_yearly','premium_lifetime')`)]);
+}, t => [check('stripe_subscription_plans_plan_id_check', sql`${t.planId} IN ('remove_ads','premium_monthly','premium_quarterly','premium_yearly','premium_lifetime')`)]);
 export const castEvents = pgTable('cast_events', {
   id: bigserial('id', {mode:'number'}).primaryKey(),sessionId:text('session_id').notNull(),payload:jsonb('payload').notNull(),createdAt:date('created_at').notNull().defaultNow(),
 }, t => [index('cast_events_expiry').on(t.createdAt)]);

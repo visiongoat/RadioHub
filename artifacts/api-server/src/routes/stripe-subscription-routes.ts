@@ -317,7 +317,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
     const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_quarterly", "premium_yearly", "premium_lifetime"];
     if (!plan || !VALID_PLANS.includes(plan)) {
-      return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
+      return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_quarterly, premium_yearly, premium_lifetime" });
     }
 
     // Bind the checkout to this specific code issuance, not a reusable six-digit PIN.

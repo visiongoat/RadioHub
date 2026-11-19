@@ -1,6 +1,6 @@
 import { subscriptionAccess, type SubscriptionAccessInput } from '@workspace/db-shared/subscription-access';
 
-const plans = new Set(['none', 'remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime']);
+const plans = new Set(['none', 'remove_ads', 'premium_monthly', 'premium_quarterly', 'premium_yearly', 'premium_lifetime']);
 /** Admin changes are entitlements, not Apple/Google purchase verifications. */
 export function adminSubscriptionPatch(body: unknown, current: SubscriptionAccessInput | null, now = new Date()): {
   patch?: Record<string, unknown>; error?: string;
