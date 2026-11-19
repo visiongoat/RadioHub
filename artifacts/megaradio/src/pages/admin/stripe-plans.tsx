@@ -59,7 +59,7 @@ interface VerifyResult {
 }
 
 function PlanCard({ plan }: { plan: StripePlan }) {
-  const [editing, setEditing] = useState(!plan.stripePriceId);
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     stripePriceId: plan.stripePriceId,
     label: plan.label,

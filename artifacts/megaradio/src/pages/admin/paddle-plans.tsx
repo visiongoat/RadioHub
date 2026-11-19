@@ -24,6 +24,7 @@ interface PlanRecord {
 const PLAN_LABELS: Record<string, string> = {
   remove_ads:       "Remove Ads",
   premium_monthly:  "Monthly",
+  premium_quarterly: "Quarterly",
   premium_yearly:   "Annual",
   premium_lifetime: "Lifetime",
 };
@@ -31,6 +32,7 @@ const PLAN_LABELS: Record<string, string> = {
 const PLAN_MODE: Record<string, string> = {
   remove_ads:       "ad-free access",
   premium_monthly:  "subscription",
+  premium_quarterly: "subscription",
   premium_yearly:   "subscription",
   premium_lifetime: "one-time payment",
 };
@@ -38,6 +40,7 @@ const PLAN_MODE: Record<string, string> = {
 const ENV_VAR: Record<string, string> = {
   remove_ads:       "PADDLE_PRICE_REMOVE_ADS",
   premium_monthly:  "PADDLE_PRICE_MONTHLY",
+  premium_quarterly: "PADDLE_PRICE_QUARTERLY",
   premium_yearly:   "PADDLE_PRICE_ANNUAL",
   premium_lifetime: "PADDLE_PRICE_LIFETIME",
 };
@@ -53,7 +56,7 @@ interface VerifyResult {
 }
 
 function PlanCard({ plan }: { plan: PlanRecord }) {
-  const [editing, setEditing] = useState(!plan.paddlePriceId);
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ paddlePriceId: plan.paddlePriceId ?? "" });
   const { verifying, result: verifyResult, reset: resetVerification, verify } = useAdminPriceVerification<VerifyResult>("/api/admin/stripe-plans/verify-paddle-price");
   const resetDraft = (editing: boolean) => {
@@ -210,6 +213,7 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
 const DEFAULT_PLANS: PlanRecord[] = [
   { planId: "remove_ads",       label: "Remove Ads", description: "Ad-free listening, no premium extras", isActive: true, paddlePriceId: "", updatedAt: "" },
   { planId: "premium_monthly",  label: "Monthly",    description: "Billed monthly, cancel anytime",       isActive: true, paddlePriceId: "", updatedAt: "" },
+  { planId: "premium_quarterly", label: "Quarterly", description: "Billed every 3 months, cancel anytime", isActive: true, paddlePriceId: "", updatedAt: "" },
   { planId: "premium_yearly",   label: "Annual",     description: "Best value — save vs monthly",         isActive: true, paddlePriceId: "", updatedAt: "" },
   { planId: "premium_lifetime", label: "Lifetime",   description: "One-time payment, never pay again",    isActive: true, paddlePriceId: "", updatedAt: "" },
 ];
