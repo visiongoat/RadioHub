@@ -1,0 +1,40 @@
+{
+  "version": 4,
+  "source": "https://www.pexels.com/video/vibrant-abstract-swirling-neon-light-patterns-31331000/",
+  "author": "Nicola Narracci",
+  "license": "https://www.pexels.com/license/",
+  "use": "Edited silent backdrop within MegaRadio radio playback; not a stock or wallpaper distribution service.",
+  "editing": "4-second circular one-second crossfade; thirty cycles.",
+  "files": [
+    {
+      "file": "pop-1080.mp4",
+      "height": 1080,
+      "seconds": 120,
+      "cycleSeconds": 4,
+      "fps": 24,
+      "silent": true,
+      "bytes": 84912916,
+      "sha256": "51467fd02297d6d6223458aba5834849a381b2d0c9efae370b3af00f046c87e0"
+    },
+    {
+      "file": "pop-720.mp4",
+      "height": 720,
+      "seconds": 120,
+      "cycleSeconds": 4,
+      "fps": 24,
+      "silent": true,
+      "bytes": 48828957,
+      "sha256": "0b667c90ee8c1411e98ce212d2c2d25d22965a11f82c2f601f45ed457ba07af5"
+    },
+    {
+      "file": "pop-480.mp4",
+      "height": 480,
+      "seconds": 120,
+      "cycleSeconds": 4,
+      "fps": 24,
+      "silent": true,
+      "bytes": 25155980,
+      "sha256": "8b7ec16fd4d7b9997c9c47f160682ecfefd3d1844b84f9133a49aba9843f7b4c"
+    }
+  ]
+}
