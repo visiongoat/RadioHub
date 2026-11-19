@@ -17,7 +17,7 @@ import { ManageSubscriptionButton } from '@/components/ManageSubscriptionButton'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const PLAN_ORDER = ["premium_yearly", "premium_monthly", "premium_lifetime", "remove_ads"];
+const PLAN_ORDER = ["premium_yearly", "premium_quarterly", "premium_monthly", "premium_lifetime", "remove_ads"];
 const RECOMMENDED = "premium_yearly";
 
 const PLAN_FEATURES: Record<string, string[]> = {
@@ -31,6 +31,14 @@ const PLAN_FEATURES: Record<string, string[]> = {
     "Stream quality depends on the station",
     "App features vary by device",
     "Linked to your account",
+    "Cancel anytime",
+  ],
+  premium_quarterly: [
+    "MegaRadio website ads removed",
+    "Stream quality depends on the station",
+    "App features vary by device",
+    "Linked to your account",
+    "Billed every 3 months",
     "Cancel anytime",
   ],
   premium_yearly: [
@@ -54,7 +62,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
 const FAQ_ITEMS = [
   {
     q: "Can I cancel my subscription at any time?",
-    a: "Yes. Monthly and annual plans can be cancelled anytime from your account settings. You keep access until the end of your billing period.",
+    a: "Yes. Monthly, quarterly and annual plans can be cancelled anytime from your account settings. You keep access until the end of your billing period.",
   },
   {
     q: "What devices are supported?",
@@ -142,7 +150,7 @@ function PlanCard({ plan, selected, recommended, onSelect }: PlanCardProps) {
   const copy = subscriptionCopy(language);
   const features = PLAN_FEATURES[plan.planId] ?? [];
   const price = fmtPrice(plan.amount, plan.currency, language);
-  const period = plan.billingInterval === 'month' ? '/mo' : plan.billingInterval === 'year' ? '/yr' : '';
+  const period = plan.billingInterval === 'month' ? (plan.billingFrequency === 3 ? '/3 mo' : '/mo') : plan.billingInterval === 'year' ? '/yr' : '';
   const isOneTime = plan.planId === "premium_lifetime" || plan.planId === 'remove_ads'
     && plan.checkoutAvailable === true && plan.billingInterval === null && plan.billingFrequency === null;
 

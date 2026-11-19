@@ -27,6 +27,7 @@ interface StripePlan {
 const PLAN_LABELS: Record<string, string> = {
   remove_ads:       "Remove Ads",
   premium_monthly:  "Monthly",
+  premium_quarterly: "Quarterly",
   premium_yearly:   "Annual",
   premium_lifetime: "Lifetime",
 };
@@ -34,6 +35,7 @@ const PLAN_LABELS: Record<string, string> = {
 const PLAN_MODE: Record<string, string> = {
   remove_ads:       "subscription",
   premium_monthly:  "subscription",
+  premium_quarterly: "subscription",
   premium_yearly:   "subscription",
   premium_lifetime: "one-time payment",
 };
@@ -41,6 +43,7 @@ const PLAN_MODE: Record<string, string> = {
 const ENV_VAR: Record<string, string> = {
   remove_ads:       "STRIPE_PRICE_REMOVE_ADS",
   premium_monthly:  "STRIPE_PRICE_MONTHLY",
+  premium_quarterly: "STRIPE_PRICE_QUARTERLY",
   premium_yearly:   "STRIPE_PRICE_ANNUAL",
   premium_lifetime: "STRIPE_PRICE_LIFETIME",
 };
@@ -281,6 +284,7 @@ function PlanCard({ plan }: { plan: StripePlan }) {
 const DEFAULT_PLANS: StripePlan[] = [
   { planId: "remove_ads",       label: "Remove Ads", description: "Ad-free listening, no premium extras", currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
   { planId: "premium_monthly",  label: "Monthly",    description: "Billed monthly, cancel anytime",       currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "premium_quarterly", label: "Quarterly", description: "Billed every 3 months, cancel anytime", currency: "eur", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
   { planId: "premium_yearly",   label: "Annual",     description: "Best value — save vs monthly",         currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
   { planId: "premium_lifetime", label: "Lifetime",   description: "One-time payment, never pay again",    currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
 ];
