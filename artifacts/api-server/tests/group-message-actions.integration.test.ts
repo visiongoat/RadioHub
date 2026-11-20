@@ -77,4 +77,10 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   const rows=(await history(peer)).messages;assert.equal(rows.find((m:any)=>m._id===sent.body.message._id).viewOnceOpened,true);
  });
 
+ it('backfills older pending invitations once without sending another push',async()=>{
+  await pool.query("INSERT INTO chat_group_members(group_id,user_id,status) VALUES($1,$2,'invited')",[otherGroup,peer]);
+  const sql=await readFile(new URL('../../../lib/db/migrations/0067_chat_view_once.sql',import.meta.url),'utf8');await pool.query(sql);await pool.query(sql);
+  const notices=await pool.query("SELECT * FROM user_notifications WHERE user_id=$1 AND type='group_invitation' AND data->>'groupId'=$2",[peer,otherGroup]);assert.equal(notices.rows.length,1);assert.equal(notices.rows[0].is_read,false);
+ });
+
 });
