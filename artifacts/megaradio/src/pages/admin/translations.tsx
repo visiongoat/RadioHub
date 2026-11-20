@@ -381,7 +381,7 @@ export default function AdminTranslations() {
         const result = await translateMissingInChunks(async()=>{
           const response=await apiFetch(`/api/admin/translation-languages/${lang.code}/translate?missingOnly=true`,{
             method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({missingOnly:true,maxKeys:20}),
+            body:JSON.stringify({missingOnly:true,maxKeys:5}),
           });
           if(!response.ok)throw new Error(`Translation request failed: ${response.status}`);
           return (await response.json()).stats;

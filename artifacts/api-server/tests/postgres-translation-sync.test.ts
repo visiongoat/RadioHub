@@ -84,6 +84,7 @@ describe(
       });
       mock.module("openai", {
         defaultExport: class {
+          constructor(options: {timeout?:number;maxRetries?:number}) { providerOptions = options; }
           chat = {
             completions: {
               create: async (input: unknown) => {
@@ -167,6 +168,7 @@ describe(
       }
     });
 
+    let providerOptions: {timeout?:number;maxRetries?:number} = {};
     const adminTranslate = async (missingOnly = false, maxKeys?:number) => {
       const result = await fetch(
         `${base}/api/admin/translation-languages/tr/translate`,
@@ -188,7 +190,7 @@ describe(
     it("bounded missing-only requests resume without retranslating saved rows",async()=>{
       await service.syncNewKeys();
       answer=async(input)=>textResponse(input.messages[1].content.includes('first_key:')?'first_key: Bir':'second_key: İki');
-      const first=await adminTranslate(true,1);assert.equal(first.status,200);assert.equal(first.body.stats.translated,1);assert.equal(first.body.stats.remaining,1);
+      const first=await adminTranslate(true,1);assert.equal(providerOptions.timeout,25_000);assert.equal(providerOptions.maxRetries,0);assert.equal(first.status,200);assert.equal(first.body.stats.translated,1);assert.equal(first.body.stats.remaining,1);
       const second=await adminTranslate(true,1);assert.equal(second.body.stats.translated,1);assert.equal(second.body.stats.remaining,0);
       const done=await adminTranslate(true,1);assert.equal(done.body.stats.translated,0);assert.equal(done.body.stats.remaining,0);assert.equal(providerCalls,2);
       for(const invalid of [0,61,1.5])assert.equal((await adminTranslate(true,invalid)).status,400);
