@@ -10,7 +10,7 @@ PushNotificationService.sendToMobileUser=async()=>{deliveries++;return true;};
 const payload=(type:string)=>({title:'Fixture',body:'Fixture',data:{type}});
 test('master and per-category preferences gate both mobile and web push channels',async()=>{
  settings={pushEnabled:false};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('new_message')),false);assert.equal(deliveries,0);
- settings={messages:false};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('new_message')),false);assert.equal(deliveries,0);
+ settings={messages:false};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('station_mention')),false);assert.equal(deliveries,0);assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('new_message')),false);assert.equal(deliveries,0);
  settings={followers:false};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('follow')),false);assert.equal(deliveries,0);
  settings={messages:false,followers:true};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('follow')),true);assert.equal(deliveries,2);
  settings={};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('new_message')),true);assert.equal(deliveries,4);

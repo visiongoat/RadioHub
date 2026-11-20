@@ -19,7 +19,7 @@ export interface NotificationInput {
 
 function shape(row: any): any {
   return {
-    _id: row.id, userId: row.user_id, fromUserId: row.from_user_id,
+    _id: row.id, userId: row.user_id, fromUserId: row.sender || row.from_user_id,
     type: row.type, title: row.title, message: row.message, data: row.data || {},
     read: row.is_read, readAt: row.read_at, expiresAt: row.expires_at,
     createdAt: row.created_at, updatedAt: row.updated_at,
@@ -39,7 +39,7 @@ export async function pgCreateNotification(input: NotificationInput): Promise<an
 
 export const notificationCategories = {
   all: null,
-  social: ['follow', 'unfollow', 'new_message'],
+  social: ['follow', 'unfollow', 'new_message', 'station_mention'],
   stations: ['new_station', 'favorite_station', 'favorite_update'],
   system: ['system', 'promotional', 'comment_reply'],
 } as const;
@@ -47,7 +47,7 @@ export type NotificationCategory = keyof typeof notificationCategories;
 // Explicit known types only. Preserve the existing 10-day social/station,
 // 7-day message, and 30-day system retention windows plus expires_at.
 const visibleNotificationSql = `user_id=$1 AND (
-  (type IN ('new_station','follow','unfollow','favorite_station','favorite_update') AND created_at>=now()-interval '10 days')
+  (type IN ('new_station','follow','unfollow','favorite_station','favorite_update','station_mention') AND created_at>=now()-interval '10 days')
   OR (type='new_message' AND created_at>=now()-interval '7 days')
   OR (type IN ('system','promotional','comment_reply') AND created_at>=now()-interval '30 days'))
   AND (expires_at IS NULL OR expires_at>now())`;
@@ -59,9 +59,10 @@ export async function pgListNotifications(userId: string, page: number, limit: n
   const offset = Math.max(0, page - 1) * limit;
   const [rows, totals] = await Promise.all([
     getPostgresPool().query(
-      `SELECT * FROM user_notifications WHERE ${visibleNotificationSql}
+      `SELECT n.*, CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl') END AS sender
+       FROM (SELECT * FROM user_notifications WHERE ${visibleNotificationSql}
        AND ($4::text[] IS NULL OR type=ANY($4::text[]))
-       ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`,
+       ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3) n LEFT JOIN users u ON u.id=COALESCE(n.from_user_id,n.data->>'followerId',n.data->>'userId') ORDER BY n.created_at DESC,n.id DESC`,
       [userId, limit, offset, notificationCategories[category]],
     ),
     getPostgresPool().query<{ type: string; count: string; unread: string }>(
@@ -135,4 +136,10 @@ export async function pgUpsertMessageNotification(input: Omit<NotificationInput,
   } finally {
     client.release();
   }
+}
+
+/** Dismiss only this account's rows; retain records for normal retention cleanup. */
+export async function pgDismissAllNotifications(userId: string): Promise<number> {
+ const result=await getPostgresPool().query("UPDATE user_notifications SET expires_at=now(),is_read=true,read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND (expires_at IS NULL OR expires_at>now())",[userId]);
+ return result.rowCount||0;
 }

@@ -237,7 +237,7 @@ export async function pgCreateUser(input: UserWriteInput): Promise<any> {
      VALUES (${Array.from({ length: 22 }, (_, index) => `$${index + 1}`).join(",")}) RETURNING *`,
     [id, input.username, input.email.toLowerCase().trim(), input.passwordHash || null,
       input.fullName || input.username || "User", input.slug || null, input.avatar || null, input.role || "user",
-      input.status || "active", !!input.emailVerified, !!input.isPublicProfile,
+      input.status || "active", !!input.emailVerified, input.isPublicProfile !== false,
       input.googleId || null, input.facebookId || null, input.appleId || null,
       JSON.stringify(input.preferences || {}), JSON.stringify(input.stats || {}),
       JSON.stringify(source), now, now, input.bio || null,

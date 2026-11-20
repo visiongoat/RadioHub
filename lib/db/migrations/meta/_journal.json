@@ -477,6 +477,13 @@
       "idx": 67,
       "tag": "0064_premium_quarterly_catalog",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "when": 1795188474466,
+      "idx": 68,
+      "tag": "0065_push_receipts",
+      "breakpoints": true
     }
   ]
 }

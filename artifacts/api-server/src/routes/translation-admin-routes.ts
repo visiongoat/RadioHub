@@ -37,7 +37,7 @@ import { pgAddRecentlyPlayed, pgFavoriteStationsForUser, pgFindStationRating, pg
 import { ensurePostgresUser } from "../data/auth-token-store";
 import { getStationByIdentifier } from "../data/station-read-store";
 import { incrementStationClick } from "../data/station-write-store";
-import { pgCreateNotification, pgListNotifications, pgMarkAllNotificationsRead, pgMarkNotificationRead, notificationCategories, type NotificationCategory } from "../data/postgres-notification-store";
+import { pgCreateNotification, pgDismissAllNotifications, pgListNotifications, pgMarkAllNotificationsRead, pgMarkNotificationRead, notificationCategories, type NotificationCategory } from "../data/postgres-notification-store";
 import { pgFindUserByEmail, pgFindUserByIdOrSlug, pgUpdateUser, pgUserFavoriteCount, pgUserFollowCounts, pgUsersNeedingProfileFix, newPublicUserId } from "../data/postgres-user-store";
 // Module-scoped lock for the auto-translate route. The translation pipeline
 // reads existing rows, calls OpenAI in batches, then writes results — running
@@ -1842,6 +1842,13 @@ ${keysText}`;
             // console.error('Error marking all notifications as read:', error);
             res.status(500).json({ error: 'Failed to mark all notifications as read' });
         }
+    });
+    app.delete("/api/user/notifications", requireAuth, async (req,res)=>{
+      res.setHeader('Cache-Control','private, no-store');
+      const owner=(req.session as any)?.userId||(req.session as any)?.user?.userId;
+      if(!owner)return void res.status(401).json({error:'Authentication required'});
+      try{const clearedCount=await pgDismissAllNotifications(owner);await CacheManager.clearByPattern(`notifications:postgres:${owner}:`).catch(()=>{});res.json({success:true,clearedCount});}
+      catch{res.status(500).json({error:'Failed to clear notifications'});}
     });
     // GET USER PROFILE BY ID (for public profiles)
     app.get("/api/user-profile/:id", async (req, res) => {

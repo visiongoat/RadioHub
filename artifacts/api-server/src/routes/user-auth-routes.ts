@@ -1,3 +1,4 @@
+import {publishStoredNotification} from '../services/notification-events';
 import {googleIdentity, canLinkGoogleAccount} from '../auth/google-identity-policy';
 import { pgListeningTotalMinutes } from '../data/postgres-listening-store';
 import { subscriptionAccess } from '@workspace/db-shared/subscription-access';
@@ -110,6 +111,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const id = newPublicUserId();
         {
             await pgCreateNotification({ id, ...input } as any);
+            await publishStoredNotification(input.userId,input.type,input.data||{});
         }
     }
     async function findIdentity(input: {
@@ -1590,7 +1592,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             await createFollowNotification({
                 userId: followingUserId, fromUserId: currentUserId, type: 'follow', title: 'New Follower',
                 message: `${currentUser?.fullName || currentUser?.username || 'Someone'} started following you`,
-                data: { followerId: currentUserId }
+                data: { followerId: currentUserId, userName: currentUser?.fullName || currentUser?.username || 'MegaRadio', userAvatar: currentUser?.avatar || currentUser?.profileImageUrl }
             });
             void import('../services/pushNotificationService').then(({ PushNotificationService }) => PushNotificationService.sendFollowNotification(followingUserId, currentUser?.fullName || currentUser?.username || 'MegaRadio', currentUser?.slug, currentUserId)).catch(() => {});
             const { invalidateSocialCacheForUser } = deps;
@@ -1623,7 +1625,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             await createFollowNotification({
                 userId: followingUserId, fromUserId: currentUserId, type: 'unfollow', title: 'User Unfollowed',
                 message: `${currentUser?.fullName || currentUser?.username || 'Someone'} unfollowed you`,
-                data: { followerId: currentUserId }
+                data: { followerId: currentUserId, userName: currentUser?.fullName || currentUser?.username || 'MegaRadio', userAvatar: currentUser?.avatar || currentUser?.profileImageUrl }
             });
             const { invalidateSocialCacheForUser } = deps;
             const unfollowedUser: any = await pgFindUserById(followingUserId);

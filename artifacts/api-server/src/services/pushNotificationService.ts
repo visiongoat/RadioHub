@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { pgPushDevices } from '../data/postgres-push-store';
-import https from 'https';
+import {expoPushRequest} from './expo-push-client';
+import {recordPushTicket} from './push-receipts';
 import {
   pgFindUserById,
   pgGetUserPushSubscription,
@@ -35,70 +36,22 @@ export interface NotificationPayload {
   data?: any;
 }
 
-// Send to Expo push tokens (React Native with expo-notifications)
-async function sendExpoNotifications(tokens: string[], payload: NotificationPayload): Promise<number> {
-  const expoTokens = tokens.filter(t => t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken['));
-  if (expoTokens.length === 0) return 0;
-
-  const messages = expoTokens.map(token => ({
-    to: token,
-    title: payload.title,
-    body: payload.body,
-    data: { ...(payload.data || {}), url: payload.url, tag: payload.tag },
-    sound: 'default',
-    badge: 1,
-    channelId: payload.data?.type === 'new_message' ? 'messages' : payload.data?.type === 'follow' ? 'followers' : 'default',
-  }));
-
-  return new Promise((resolve) => {
-    const body = JSON.stringify(messages);
-    const options = {
-      hostname: 'exp.host',
-      path: '/--/api/v2/push/send',
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    };
-
-    const MAX_RESPONSE_BYTES = 256 * 1024; // 256KB cap on response body
-    const REQUEST_TIMEOUT_MS = 10_000;
-    const req = https.request({ ...options, timeout: REQUEST_TIMEOUT_MS }, (res) => {
-      let data = '';
-      let total = 0;
-      let aborted = false;
-      res.on('data', chunk => {
-        if (aborted) return;
-        total += chunk.length;
-        if (total > MAX_RESPONSE_BYTES) {
-          aborted = true;
-          try { res.destroy(); } catch {}
-          return resolve(0);
-        }
-        data += chunk;
-      });
-      res.on('end', () => {
-        if (aborted) return;
-        try {
-          const result = JSON.parse(data);
-          const successCount = Array.isArray(result.data)
-            ? result.data.filter((r: any) => r.status === 'ok').length
-            : expoTokens.length;
-          resolve(successCount);
-        } catch {
-          resolve(0);
-        }
-      });
-      res.on('error', () => { if (!aborted) resolve(0); });
-    });
-    req.on('error', () => resolve(0));
-    req.on('timeout', () => { try { req.destroy(); } catch {} resolve(0); });
-    req.write(body);
-    req.end();
-  });
+// Tickets acknowledge Expo queue acceptance; receipts separately track APNs/FCM handoff.
+async function sendExpoNotifications(devices:{id:string;token:string}[],payload:NotificationPayload):Promise<number>{
+ const eligible=devices.filter(device=>/^(?:ExponentPushToken|ExpoPushToken)\[/.test(device.token));
+ let accepted=0;
+ for(let offset=0;offset<eligible.length;offset+=100){
+  const batch=eligible.slice(offset,offset+100);
+  const result=await expoPushRequest('send',batch.map(device=>({to:device.token,title:payload.title,body:payload.body,data:{...(payload.data||{}),url:payload.url,tag:payload.tag},sound:'default',badge:1,channelId:['new_message','station_mention'].includes(payload.data?.type)?'messages':payload.data?.type==='follow'?'followers':'default'})));
+  if(!Array.isArray(result?.data))continue;
+  for(let index=0;index<batch.length;index++){
+   const ticket=result.data[index];
+   // Receipt persistence failure must not resend a notification already accepted by Expo.
+   if(ticket?.status==='ok'&&typeof ticket.id==='string'&&ticket.id)accepted++;
+   await recordPushTicket(batch[index],ticket).catch(()=>console.warn('[push] Could not record provider ticket'));
+  }
+ }
+ return accepted;
 }
 
 export class PushNotificationService {
@@ -107,8 +60,8 @@ export class PushNotificationService {
    */
   static async sendToMobileUser(userId: string, payload: NotificationPayload): Promise<boolean> {
     try {
-      const tokens: string[] = [];
-      for await (const device of pgPushDevices({ userId })) tokens.push(device.token);
+      const tokens: {id:string;token:string}[] = [];
+      for await (const device of pgPushDevices({ userId })) tokens.push({id:device.id,token:device.token});
       if (!tokens.length) return false;
       const sent = await sendExpoNotifications(tokens, payload);
       return sent > 0;
@@ -155,7 +108,7 @@ export class PushNotificationService {
       const user = await pgFindUserById(userId);
       if (!user) return false;
       const preferences = {pushEnabled:true,messages:true,followers:true,favorites:true,nowPlaying:true,recommendations:false,...user.notificationSettings};
-      const category=({'new_message':'messages',follow:'followers','favorite-added':'favorites','now-playing':'nowPlaying',recommendations:'recommendations'} as const)[payload.data?.type as 'new_message'|'follow'|'favorite-added'|'now-playing'|'recommendations'];
+      const category=({'new_message':'messages','station_mention':'messages',follow:'followers','favorite-added':'favorites','now-playing':'nowPlaying',recommendations:'recommendations'} as const)[payload.data?.type as 'new_message'|'station_mention'|'follow'|'favorite-added'|'now-playing'|'recommendations'];
       if(preferences.pushEnabled===false||(category&&preferences[category]===false))return false;
     } catch { return false; }
     const [web, mobile] = await Promise.allSettled([
@@ -174,9 +127,9 @@ export class PushNotificationService {
     // Fan-out concurrency cap. A broadcast to 50k subscribers without a cap
     // creates 50k concurrent fetch promises against Web-Push and Expo APIs:
     // socket descriptor exhaustion, RSS spike from buffered request bodies,
-    // and rate-limit bans from upstream. Cap at 25 in-flight workers and
+    // and rate-limit bans from upstream. Cap at 6 in-flight workers and
     // stream the work through; total memory is O(concurrency), not O(N).
-    const CONCURRENCY = 25;
+    const CONCURRENCY = 6;
     let succeeded = 0;
     let cursor = 0;
     const total = userIds.length;
