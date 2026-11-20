@@ -275,6 +275,9 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
             const reply = await pgTranslationSync().withLeader(async writer => {
             // missingOnly=true → only insert truly missing translations, never overwrite existing rows
             const missingOnly = req.query.missingOnly === 'true' || req.body?.missingOnly === true;
+            const maxKeys = req.body?.maxKeys;
+            if (maxKeys !== undefined && (!missingOnly || !Number.isSafeInteger(maxKeys) || maxKeys < 1 || maxKeys > 60))
+                return {status:400,body:{error:'maxKeys must be an integer from 1 to 60 in missing-only mode'}};
             // Skip English - no need to translate
             if (code.toLowerCase() === 'en') {
                 return { status: 200, body: {
@@ -388,10 +391,12 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
                         existing: existingTranslations.length,
                         translated: 0,
                         fixed: 0,
-                        failed: 0
+                        failed: 0, remaining: 0
                     }
                 } };
             }
+            const deferredKeys = maxKeys === undefined ? 0 : Math.max(0, keysToTranslate.length - maxKeys);
+            if(maxKeys !== undefined)keysToTranslate.splice(maxKeys);
             logger.log(`🔄 ${language.name}: Found ${keysToTranslate.filter(k => k.isNew).length} missing, ${keysToFix.length} to fix`);
             // Complete language mapping for all 57 languages
             const languageMapping: {
@@ -550,7 +555,8 @@ ${keysText}`;
                     translated,
                     fixed,
                     failed,
-                    keysFixed: keysToFix
+                    keysFixed: keysToFix,
+                    remaining: deferredKeys + failed
                 }
             } };
             });
