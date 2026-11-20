@@ -399,7 +399,7 @@ export default function AdminTranslations() {
     queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
 
     toast({
-      title: "Missing Translations Filled",
+      title: totalFailed > 0 ? "Translations Incomplete" : "Missing Translations Filled",
       description: `Added ${totalTranslated} new translations across ${incompleteLanguages.length} languages (${totalFailed} failed). Existing translations were not modified.`
     });
 
