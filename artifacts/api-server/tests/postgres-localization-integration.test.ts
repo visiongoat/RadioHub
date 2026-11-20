@@ -185,4 +185,15 @@ describe('PostgreSQL localization integration', { skip: !connectionString }, () 
     assert.equal((await store.findTranslation(key._id, 'de')).value, 'Hallo');
     assert.equal((await store.findTranslation(key._id, 'fr')).value, 'Bonjour');
   });
+  it('counts English source defaults without requiring duplicate English translations', async () => {
+    await store.saveTranslationLanguage({ code: 'en', name: 'English', isEnabled: true });
+    await store.createKey({ key: 'source_only_english', defaultValue: 'English source text', category: 'test' });
+    const englishRows = await store.listTranslations('en');
+    assert.equal((await store.translationLanguagesWithCompletion()).find(language => language.code === 'en').completionPercentage, 100);
+    assert.deepEqual(await store.listTranslations('en'), englishRows, 'reading completion must not generate translation rows');
+    const blank = await store.createKey({ key: 'blank_source_fixture', defaultValue: '   ', category: 'test' });
+    assert.ok((await store.translationLanguagesWithCompletion()).find(language => language.code === 'en').completionPercentage < 100, 'missing source text is still incomplete');
+    await store.deleteKey(blank._id);
+  });
+
 });
