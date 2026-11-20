@@ -33,6 +33,9 @@ let hasHistory = false;
 let deletionCreatedAt=()=>new Date(Date.now()-60000).toISOString();
 
 let blocked=false;const safetyChanges:any[]=[];
+let muted=false;const pushCalls:any[]=[];
+mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async(...args:any[])=>{pushCalls.push(args);return true;}}}});
+mock.module(new URL('../src/postgres-runtime.ts',import.meta.url).href,{namedExports:{getPostgresPool:()=>({query:async()=>({rows:muted?[{muted:true}]:[]})})}});
 mock.module(new URL('../src/data/direct-chat-safety.ts',import.meta.url).href,{namedExports:{lockDirectPair:async()=>{},directPairBlocked:async()=>blocked,directBlockedPeers:async()=>new Set(blocked?[partnerId,nextPageContactId]:[]),directSafety:async()=>({blocked,canContact:!blocked}),setDirectBlock:async(owner:string,target:string,value:boolean)=>{safetyChanges.push([owner,target,value]);return{blocked:value,canContact:!value};},reportDirectChat:async()=>true,withAllowedDirectPair:async(_a:string,_b:string,operation:Function)=>{if(blocked)throw Object.assign(Error('Unavailable'),{status:403});return operation({query:async()=>({rows:[]})});}}});
 mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{namedExports:{getPublicStationByIdentifier:async(id:string)=>id.endsWith('999')?null:{_id:id,name:'Canonical Radio',country:'Austria',favicon:'https://example.test/logo.png'}}});
 mock.module("express-rate-limit", {
@@ -324,4 +327,11 @@ test('safety preferences bind to the authenticated actor and never notify the ta
  const events=sent.slice(start);assert.deepEqual(events.find(e=>e.userId===partnerId)?.payload,{type:'chat:permissions',partnerId:userId});
  assert.equal(events.find(e=>e.userId===userId)?.payload.blocked,true);
  assert.equal((await fetch(`${baseUrl}/api/messages/safety/${partnerId}/report`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'unsupported'})})).status,400);
+});
+
+test('viewed conversations still deliver to mobile, with stable message identity, but muted chats do not',async()=>{
+ const request=()=>fetch(`${baseUrl}/api/messages/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({toUserId:partnerId,content:'Mobile delivery fixture'})});
+ const before=pushCalls.length;assert.equal((await request()).status,200);await new Promise<void>(resolve=>setImmediate(resolve));
+ assert.equal(pushCalls.length,before+1);const [recipient,payload,options]=pushCalls.at(-1);assert.equal(recipient,partnerId);assert.equal(options.skipWeb,true);assert.ok(payload.data.messageId);assert.equal(payload.data.fromUserId,userId);
+ muted=true;try{assert.equal((await request()).status,200);await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(pushCalls.length,before+1);}finally{muted=false;}
 });
