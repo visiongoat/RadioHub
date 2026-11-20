@@ -1,3 +1,4 @@
+import {pgListNotifications} from '../data/postgres-notification-store';
 import webpush from 'web-push';
 import { pgPushDevices } from '../data/postgres-push-store';
 import {expoPushRequest} from './expo-push-client';
@@ -24,6 +25,7 @@ export interface NotificationPayload {
   body: string;
   icon?: string;
   badge?: string;
+  badgeCount?:number;
   image?: string;
   url?: string;
   tag?: string;
@@ -42,7 +44,7 @@ async function sendExpoNotifications(devices:{id:string;token:string}[],payload:
  let accepted=0;
  for(let offset=0;offset<eligible.length;offset+=100){
   const batch=eligible.slice(offset,offset+100);
-  const result=await expoPushRequest('send',batch.map(device=>({to:device.token,title:payload.title,body:payload.body,data:{...(payload.data||{}),url:payload.url,tag:payload.tag},sound:'default',priority:'high',badge:1,channelId:['new_message','station_mention'].includes(payload.data?.type)?'messages':payload.data?.type==='follow'?'followers':'default'})));
+  const result=await expoPushRequest('send',batch.map(device=>({to:device.token,title:payload.title,body:payload.body,data:{...(payload.data||{}),url:payload.url,tag:payload.tag},sound:'default',priority:'high',badge:payload.badgeCount??1,mutableContent:['new_message','group_invitation','follow','station_mention'].includes(payload.data?.type),channelId:['new_message','station_mention'].includes(payload.data?.type)?'messages':payload.data?.type==='follow'?'followers':'default'})));
   if(!Array.isArray(result?.data))continue;
   for(let index=0;index<batch.length;index++){
    const ticket=result.data[index];
@@ -63,7 +65,8 @@ export class PushNotificationService {
       const tokens: {id:string;token:string}[] = [];
       for await (const device of pgPushDevices({ userId })) tokens.push({id:device.id,token:device.token});
       if (!tokens.length) return false;
-      const sent = await sendExpoNotifications(tokens, payload);
+      const unread=await pgListNotifications(userId,1,1);
+      const sent = await sendExpoNotifications(tokens, {...payload,badgeCount:unread.unreadCount});
       return sent > 0;
     } catch {
       return false;
@@ -108,7 +111,7 @@ export class PushNotificationService {
       const user = await pgFindUserById(userId);
       if (!user) return false;
       const preferences = {pushEnabled:true,messages:true,followers:true,favorites:true,nowPlaying:true,recommendations:false,...user.notificationSettings};
-      const category=({'new_message':'messages','station_mention':'messages',follow:'followers','favorite-added':'favorites','now-playing':'nowPlaying',recommendations:'recommendations'} as const)[payload.data?.type as 'new_message'|'station_mention'|'follow'|'favorite-added'|'now-playing'|'recommendations'];
+      const category=({'group_invitation':'messages','new_message':'messages','station_mention':'messages',follow:'followers','favorite-added':'favorites','now-playing':'nowPlaying',recommendations:'recommendations'} as const)[payload.data?.type as 'new_message'|'station_mention'|'follow'|'favorite-added'|'now-playing'|'recommendations'];
       if(preferences.pushEnabled===false||(category&&preferences[category]===false))return false;
     } catch { return false; }
     const [web, mobile] = await Promise.allSettled([
@@ -181,11 +184,12 @@ export class PushNotificationService {
     followedUserId: string,
     followerName: string,
     followerSlug?: string,
-    followerId?: string
+    followerId?: string,
+    followerAvatar?:string
   ): Promise<boolean> {
     const payload: NotificationPayload = {
-      title: 'New Follower',
-      body: `${followerName} started following you`,
+      title: followerName,
+      body: 'Seni takip etmeye başladı.',
       icon: '/favicon.png',
       badge: '/favicon.png',
       url: followerSlug ? `/community/profile/${followerSlug}` : '/community',
@@ -194,6 +198,7 @@ export class PushNotificationService {
       data: {
         type: 'follow',
         followerName,
+        userName:followerName,userAvatar:followerAvatar||'',
         followerSlug,
         screen: 'user-profile',
         userId: followerId,

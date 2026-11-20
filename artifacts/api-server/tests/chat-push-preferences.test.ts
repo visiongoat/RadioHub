@@ -1,7 +1,7 @@
 import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 let settings: Record<string,boolean> = {};
-mock.module(new URL('../src/data/postgres-user-store.ts',import.meta.url).href,{namedExports:{pgFindUserById:async()=>({notificationSettings:settings}),pgGetUserPushSubscription:async()=>null,pgListUserPushSubscriptions:async()=>[],pgSetUserPushSubscription:async()=>{}}});
+mock.module(new URL('../src/data/postgres-user-store.ts',import.meta.url).href,{namedExports:{newPublicUserId:()=>'',pgFindUserById:async()=>({notificationSettings:settings}),pgGetUserPushSubscription:async()=>null,pgListUserPushSubscriptions:async()=>[],pgSetUserPushSubscription:async()=>{}}});
 mock.module(new URL('../src/data/postgres-push-store.ts',import.meta.url).href,{namedExports:{pgPushDevices:async function*(){}}});
 const {PushNotificationService}=await import('../src/services/pushNotificationService');
 let deliveries=0;

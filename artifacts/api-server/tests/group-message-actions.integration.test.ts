@@ -21,10 +21,10 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
  before(async()=>{
   const url=new URL(connectionString!);assert.ok(['127.0.0.1','localhost','[::1]'].includes(url.hostname),'integration fixtures require a local test database');
   admin=new pg.Pool({connectionString});await admin.query(`CREATE SCHEMA "${schema}"`);url.searchParams.set('options',`-c search_path=${schema},public`);pool=new pg.Pool({connectionString:url.toString()});
-  await pool.query("CREATE TABLE users(id text PRIMARY KEY,full_name text,username text,avatar text,source jsonb DEFAULT '{}')");
-  await pool.query('CREATE TABLE direct_messages(id text PRIMARY KEY)');
-  for(const file of ['0046_chat_groups.sql','0047_chat_group_music_styles.sql','0048_chat_group_message_actions.sql','0049_chat_inbox_actions.sql','0053_chat_message_reactions.sql'])await pool.query(await readFile(new URL('../../../lib/db/migrations/'+file,import.meta.url),'utf8'));
-  await pool.query("INSERT INTO users(id,full_name) VALUES($1,'Owner'),($2,'Peer')",[owner,peer]);
+  await pool.query("CREATE TABLE users(id text PRIMARY KEY,full_name text,username text,avatar text,status text,source jsonb DEFAULT '{}')");
+  await pool.query('CREATE TABLE direct_messages(id text PRIMARY KEY)');await pool.query("CREATE TABLE user_notifications(id text PRIMARY KEY,user_id text,from_user_id text,type text,title text,message text,data jsonb,is_read boolean DEFAULT false,read_at timestamptz,created_at timestamptz DEFAULT now())");
+  for(const file of ['0046_chat_groups.sql','0047_chat_group_music_styles.sql','0048_chat_group_message_actions.sql','0049_chat_inbox_actions.sql','0053_chat_message_reactions.sql','0067_chat_view_once.sql'])await pool.query(await readFile(new URL('../../../lib/db/migrations/'+file,import.meta.url),'utf8'));
+  await pool.query("INSERT INTO users(id,full_name) VALUES($1,'Owner'),($2,'Peer')",[owner,peer]);await pool.query('CREATE TABLE user_follows(follower_id text,following_id text)');await pool.query('INSERT INTO user_follows VALUES($1,$2)',[owner,peer]);
   await pool.query("INSERT INTO chat_groups(id,name,created_by) VALUES($1,'Group',$3),($2,'Other',$3)",[group,otherGroup,owner]);
   await pool.query("INSERT INTO chat_group_members(group_id,user_id,status,joined_at) VALUES($1,$2,'active','2026-01-01'),($1,$3,'active','2026-01-01')",[group,owner,peer]);
   const app=express();app.use(express.json());registerChatGroupRoutes(app,((req:any,_res:any,next:any)=>{req.session={user:{userId:req.headers['x-test-user']||owner}};next();}));server=app.listen(0);await new Promise<void>(resolve=>server.once('listening',resolve));base=`http://127.0.0.1:${(server.address() as any).port}/api/messages/groups/${group}`;
@@ -56,4 +56,31 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   const old='507f1f77bcf86cd799439031',foreign='507f1f77bcf86cd799439032';await pool.query("INSERT INTO chat_group_messages(id,group_id,from_user_id,content,created_at) VALUES($1,$3,$5,'Old','2025-01-01'),($2,$4,$5,'Foreign',now())",[old,foreign,group,otherGroup,owner]);
   for(const messageId of [old,foreign]){assert.equal((await post('/pin',{messageId,pinned:true})).status,404);assert.equal((await post('/delete',{messageId,scope:'self'})).status,404);assert.equal((await post('/messages',{content:'Invalid reply',replyToId:messageId})).status,404);}
  });
+ it('persists a group invitation and the recipient can join directly from its destination',async()=>{
+  const result=await fetch(base.replace('/'+group,''),{method:'POST',headers:{'content-type':'application/json','x-test-user':owner},body:JSON.stringify({name:'Invitation',memberIds:[peer]})});assert.equal(result.status,200);const invited=(await result.json() as any).groupId;
+  const notice=(await pool.query("SELECT * FROM user_notifications WHERE user_id=$1 AND type='group_invitation' AND data->>'groupId'=$2",[peer,invited])).rows[0];assert.ok(notice);assert.equal(notice.data.screen,'group-chat');
+  const url=base.replace(group,invited);const info=await (await fetch(url,{headers:{'x-test-user':peer}})).json() as any;assert.equal(info.group.status,'invited');
+  assert.equal((await fetch(url+'/messages',{headers:{'x-test-user':peer}})).status,404);
+  const joined=await fetch(url+'/respond',{method:'POST',headers:{'content-type':'application/json','x-test-user':peer},body:JSON.stringify({accept:true})});assert.equal(joined.status,200);
+  assert.equal((await fetch(url+'/messages',{headers:{'x-test-user':peer}})).status,200);
+  assert.equal((await pool.query('SELECT is_read FROM user_notifications WHERE id=$1',[notice.id])).rows[0].is_read,true);
+ });
+ it('private one-time photos are atomically consumed, cannot be forwarded or reopened, and delete their bytes',async()=>{
+  const fs=await import('node:fs/promises'),path=await import('node:path');const media=await import('../src/data/chat-view-once');
+  const id=randomBytes(16).toString('hex'),ref='view-once:'+id;await fs.mkdir(media.privateChatDirectory(),{recursive:true});const file=path.join(media.privateChatDirectory(),id+'.webp');await fs.writeFile(file,Buffer.from('fixture'));
+  await pool.query('INSERT INTO chat_view_once_media(id,owner_id,file_name,photo_bytes) VALUES($1,$2,$3,$4)',[id,owner,id+'.webp',Buffer.from('fixture')]);
+  const sent=await post('/messages',{content:'Photo',messageType:'image',imageUrl:ref});assert.equal(sent.status,200);assert.equal(sent.body.message.viewOnce,true);
+  assert.equal((await post('/messages',{content:'Forward',messageType:'image',imageUrl:ref})).status,409);
+  await assert.rejects(()=>media.openViewOnce(owner,id),{status:404});
+  const opened=await Promise.allSettled([media.openViewOnce(peer,id),media.openViewOnce(peer,id)]);assert.equal(opened.filter(r=>r.status==='fulfilled').length,1);assert.equal(opened.filter(r=>r.status==='rejected'&&r.reason.status===410).length,1);
+  await fs.unlink(file);assert.equal((await pool.query('SELECT photo_bytes FROM chat_view_once_media WHERE id=$1',[id])).rows[0].photo_bytes,null);await assert.rejects(()=>media.openViewOnce(peer,id),{status:410});
+  const rows=(await history(peer)).messages;assert.equal(rows.find((m:any)=>m._id===sent.body.message._id).viewOnceOpened,true);
+ });
+
+ it('backfills older pending invitations once without sending another push',async()=>{
+  await pool.query("INSERT INTO chat_group_members(group_id,user_id,status) VALUES($1,$2,'invited')",[otherGroup,peer]);
+  const sql=await readFile(new URL('../../../lib/db/migrations/0067_chat_view_once.sql',import.meta.url),'utf8');await pool.query(sql);await pool.query(sql);
+  const notices=await pool.query("SELECT * FROM user_notifications WHERE user_id=$1 AND type='group_invitation' AND data->>'groupId'=$2",[peer,otherGroup]);assert.equal(notices.rows.length,1);assert.equal(notices.rows[0].is_read,false);
+ });
+
 });

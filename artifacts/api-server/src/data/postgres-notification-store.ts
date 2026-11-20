@@ -39,7 +39,7 @@ export async function pgCreateNotification(input: NotificationInput): Promise<an
 
 export const notificationCategories = {
   all: null,
-  social: ['follow', 'unfollow', 'new_message', 'station_mention'],
+  social: ['follow', 'unfollow', 'group_invitation', 'new_message', 'station_mention'],
   stations: ['new_station', 'favorite_station', 'favorite_update'],
   system: ['system', 'promotional', 'comment_reply'],
 } as const;
@@ -47,7 +47,7 @@ export type NotificationCategory = keyof typeof notificationCategories;
 // Explicit known types only. Preserve the existing 10-day social/station,
 // 7-day message, and 30-day system retention windows plus expires_at.
 const visibleNotificationSql = `user_id=$1 AND (
-  (type IN ('new_station','follow','unfollow','favorite_station','favorite_update','station_mention') AND created_at>=now()-interval '10 days')
+  (type IN ('new_station','follow','unfollow','favorite_station','favorite_update','station_mention','group_invitation') AND created_at>=now()-interval '10 days')
   OR (type='new_message' AND created_at>=now()-interval '7 days')
   OR (type IN ('system','promotional','comment_reply') AND created_at>=now()-interval '30 days'))
   AND (expires_at IS NULL OR expires_at>now())`;
