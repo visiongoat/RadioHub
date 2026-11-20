@@ -1,5 +1,5 @@
 export interface TranslationChunkStats { translated:number; fixed?:number; failed:number; remaining?:number }
-/** Each request is one provider batch, safely below the web proxy timeout. The server selects missing rows. */
+/** Small bounded provider batches keep requests below the web proxy timeout. The server selects missing rows. */
 export async function translateMissingInChunks(send:()=>Promise<TranslationChunkStats>,onProgress?:(done:number)=>void){
  let translated=0,fixed=0;
  for(let request=0;request<200;request++){

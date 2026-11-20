@@ -491,7 +491,8 @@ ${keysText}`;
                 let parsed = new Map<string, string>();
                 try {
                     const openAIModule = await import('openai');
-                    const openai = new openAIModule.default({ apiKey: process.env.OPENAI_API_KEY });
+                    // Bound provider latency so a disconnected admin request cannot retain the global sync lock for minutes.
+                    const openai = new openAIModule.default({ apiKey: process.env.OPENAI_API_KEY, timeout: 25_000, maxRetries: 0 });
                     const response = await openai.chat.completions.create({
                         model: 'gpt-4o-mini',
                         messages: [
