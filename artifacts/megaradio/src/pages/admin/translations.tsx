@@ -1,3 +1,4 @@
+import {translateMissingInChunks} from '@/lib/translation-chunks';
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -377,21 +378,16 @@ export default function AdminTranslations() {
       setTranslateMissingProgress({ current: i + 1, total: incompleteLanguages.length, currentLang: lang.name });
 
       try {
-        const response = await apiFetch(
-          `/api/admin/translation-languages/${lang.code}/translate?missingOnly=true`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          totalTranslated += data.stats?.translated || 0;
-          totalFailed += data.stats?.failed || 0;
-        } else {
-          totalFailed++;
-        }
+        const result = await translateMissingInChunks(async()=>{
+          const response=await apiFetch(`/api/admin/translation-languages/${lang.code}/translate?missingOnly=true`,{
+            method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({missingOnly:true,maxKeys:20}),
+          });
+          if(!response.ok)throw new Error(`Translation request failed: ${response.status}`);
+          return (await response.json()).stats;
+        },done=>setTranslateMissingProgress({current:i+1,total:incompleteLanguages.length,currentLang:`${lang.name} · ${done}`}));
+        totalTranslated+=result.translated+result.fixed;
+        totalFailed+=result.failed;
       } catch (error) {
         console.error(`Failed to translate missing for ${lang.code}:`, error);
         totalFailed++;
