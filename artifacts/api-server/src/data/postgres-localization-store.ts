@@ -331,8 +331,8 @@ export class PostgresLocalizationStore {
 
   async translationLanguagesWithCompletion(): Promise<any[]> {
     const result = await this.pool.query(
-      `SELECT l.*,CASE WHEN k.total=0 THEN 0 ELSE round(100.0*COALESCE(t.completed,0)/k.total)::integer END AS completion
-       FROM translation_languages l CROSS JOIN (SELECT count(*) AS total FROM translation_keys) k
+      `SELECT l.*,CASE WHEN k.total=0 THEN 0 ELSE round(100.0*(CASE WHEN l.code='en' THEN k.source_completed ELSE COALESCE(t.completed,0) END)/k.total)::integer END AS completion
+       FROM translation_languages l CROSS JOIN (SELECT count(*) AS total,count(*) FILTER (WHERE btrim(default_value)<>'') AS source_completed FROM translation_keys) k
        LEFT JOIN (SELECT language,count(*) AS completed FROM translations WHERE is_completed=true GROUP BY language) t ON t.language=l.code
        ORDER BY l.created_at DESC,l.id`,
     );
