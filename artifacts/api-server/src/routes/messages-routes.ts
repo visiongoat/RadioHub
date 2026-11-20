@@ -278,7 +278,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         if(error||!req.file?.buffer)return void res.status(400).json({error:'Photo upload failed'});
         const actor=getSessionUserId(req);if(!actor)return void res.status(401).json({error:'Not authenticated'});
         const id=crypto.randomBytes(16).toString('hex'),directory=privateChatDirectory(),file=path.join(directory,id+'.input');
-        try{await cleanupViewOnce();await fs.mkdir(directory,{recursive:true});await fs.writeFile(file,req.file.buffer,{flag:'wx'});const processed=await optimizeChatPhoto(file);if(processed===file)throw Error('Animated view-once is unsupported');await getPostgresPool().query('INSERT INTO chat_view_once_media(id,owner_id,file_name) VALUES($1,$2,$3)',[id,actor,path.basename(processed)]);res.json({imageUrl:`view-once:${id}`});}
+        try{await cleanupViewOnce();await fs.mkdir(directory,{recursive:true});await fs.writeFile(file,req.file.buffer,{flag:'wx'});const processed=await optimizeChatPhoto(file);if(processed===file)throw Error('Animated view-once is unsupported');const bytes=await fs.readFile(processed);if(bytes.length>2*1024*1024)throw Error('Photo too large');await getPostgresPool().query('INSERT INTO chat_view_once_media(id,owner_id,file_name,photo_bytes) VALUES($1,$2,$3,$4)',[id,actor,path.basename(processed),bytes]);await fs.unlink(processed).catch(()=>{});res.json({imageUrl:`view-once:${id}`});}
         catch{await fs.unlink(file).catch(()=>{});await fs.unlink(path.join(directory,id+'.webp')).catch(()=>{});res.status(400).json({error:'Photo upload failed'});}
       });
     });

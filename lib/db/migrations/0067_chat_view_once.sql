@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS chat_view_once_media (
  id text PRIMARY KEY,
  owner_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  file_name text NOT NULL,
+ photo_bytes bytea CHECK(photo_bytes IS NULL OR octet_length(photo_bytes)<=2097152),
  expires_at timestamptz NOT NULL DEFAULT now()+interval '7 days',
  kind text CHECK(kind IN ('direct','group')),
  target_id text,

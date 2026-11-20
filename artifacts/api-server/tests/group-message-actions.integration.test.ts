@@ -22,7 +22,7 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   const url=new URL(connectionString!);assert.ok(['127.0.0.1','localhost','[::1]'].includes(url.hostname),'integration fixtures require a local test database');
   admin=new pg.Pool({connectionString});await admin.query(`CREATE SCHEMA "${schema}"`);url.searchParams.set('options',`-c search_path=${schema},public`);pool=new pg.Pool({connectionString:url.toString()});
   await pool.query("CREATE TABLE users(id text PRIMARY KEY,full_name text,username text,avatar text,status text,source jsonb DEFAULT '{}')");
-  await pool.query('CREATE TABLE direct_messages(id text PRIMARY KEY)');await pool.query("CREATE TABLE user_notifications(id text PRIMARY KEY,user_id text,from_user_id text,type text,title text,message text,data jsonb,is_read boolean DEFAULT false,read_at timestamptz)");
+  await pool.query('CREATE TABLE direct_messages(id text PRIMARY KEY)');await pool.query("CREATE TABLE user_notifications(id text PRIMARY KEY,user_id text,from_user_id text,type text,title text,message text,data jsonb,is_read boolean DEFAULT false,read_at timestamptz,created_at timestamptz DEFAULT now())");
   for(const file of ['0046_chat_groups.sql','0047_chat_group_music_styles.sql','0048_chat_group_message_actions.sql','0049_chat_inbox_actions.sql','0053_chat_message_reactions.sql','0067_chat_view_once.sql'])await pool.query(await readFile(new URL('../../../lib/db/migrations/'+file,import.meta.url),'utf8'));
   await pool.query("INSERT INTO users(id,full_name) VALUES($1,'Owner'),($2,'Peer')",[owner,peer]);await pool.query('CREATE TABLE user_follows(follower_id text,following_id text)');await pool.query('INSERT INTO user_follows VALUES($1,$2)',[owner,peer]);
   await pool.query("INSERT INTO chat_groups(id,name,created_by) VALUES($1,'Group',$3),($2,'Other',$3)",[group,otherGroup,owner]);
@@ -68,12 +68,12 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
  it('private one-time photos are atomically consumed, cannot be forwarded or reopened, and delete their bytes',async()=>{
   const fs=await import('node:fs/promises'),path=await import('node:path');const media=await import('../src/data/chat-view-once');
   const id=randomBytes(16).toString('hex'),ref='view-once:'+id;await fs.mkdir(media.privateChatDirectory(),{recursive:true});const file=path.join(media.privateChatDirectory(),id+'.webp');await fs.writeFile(file,Buffer.from('fixture'));
-  await pool.query('INSERT INTO chat_view_once_media(id,owner_id,file_name) VALUES($1,$2,$3)',[id,owner,id+'.webp']);
+  await pool.query('INSERT INTO chat_view_once_media(id,owner_id,file_name,photo_bytes) VALUES($1,$2,$3,$4)',[id,owner,id+'.webp',Buffer.from('fixture')]);
   const sent=await post('/messages',{content:'Photo',messageType:'image',imageUrl:ref});assert.equal(sent.status,200);assert.equal(sent.body.message.viewOnce,true);
   assert.equal((await post('/messages',{content:'Forward',messageType:'image',imageUrl:ref})).status,409);
   await assert.rejects(()=>media.openViewOnce(owner,id),{status:404});
   const opened=await Promise.allSettled([media.openViewOnce(peer,id),media.openViewOnce(peer,id)]);assert.equal(opened.filter(r=>r.status==='fulfilled').length,1);assert.equal(opened.filter(r=>r.status==='rejected'&&r.reason.status===410).length,1);
-  await assert.rejects(()=>fs.stat(file),{code:'ENOENT'});await assert.rejects(()=>media.openViewOnce(peer,id),{status:410});
+  await fs.unlink(file);assert.equal((await pool.query('SELECT photo_bytes FROM chat_view_once_media WHERE id=$1',[id])).rows[0].photo_bytes,null);await assert.rejects(()=>media.openViewOnce(peer,id),{status:410});
   const rows=(await history(peer)).messages;assert.equal(rows.find((m:any)=>m._id===sent.body.message._id).viewOnceOpened,true);
  });
 
