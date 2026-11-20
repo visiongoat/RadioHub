@@ -24,7 +24,7 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   await pool.query("CREATE TABLE users(id text PRIMARY KEY,full_name text,username text,avatar text,status text,source jsonb DEFAULT '{}')");
   await pool.query('CREATE TABLE direct_messages(id text PRIMARY KEY)');await pool.query("CREATE TABLE user_notifications(id text PRIMARY KEY,user_id text,from_user_id text,type text,title text,message text,data jsonb,is_read boolean DEFAULT false,read_at timestamptz,created_at timestamptz DEFAULT now())");
   for(const file of ['0046_chat_groups.sql','0047_chat_group_music_styles.sql','0048_chat_group_message_actions.sql','0049_chat_inbox_actions.sql','0053_chat_message_reactions.sql','0067_chat_view_once.sql'])await pool.query(await readFile(new URL('../../../lib/db/migrations/'+file,import.meta.url),'utf8'));
-  await pool.query("INSERT INTO users(id,full_name) VALUES($1,'Owner'),($2,'Peer')",[owner,peer]);await pool.query('CREATE TABLE user_follows(follower_id text,following_id text)');await pool.query('INSERT INTO user_follows VALUES($1,$2)',[owner,peer]);
+  await pool.query("INSERT INTO users(id,full_name) VALUES($1,'Owner'),($2,'Peer')",[owner,peer]);await pool.query('CREATE TABLE user_follows(follower_id text,following_id text)');await pool.query('CREATE TABLE direct_chat_blocks(user_id text,blocked_user_id text)');await pool.query('INSERT INTO user_follows VALUES($1,$2)',[owner,peer]);
   await pool.query("INSERT INTO chat_groups(id,name,created_by) VALUES($1,'Group',$3),($2,'Other',$3)",[group,otherGroup,owner]);
   await pool.query("INSERT INTO chat_group_members(group_id,user_id,status,joined_at) VALUES($1,$2,'active','2026-01-01'),($1,$3,'active','2026-01-01')",[group,owner,peer]);
   const app=express();app.use(express.json());registerChatGroupRoutes(app,((req:any,_res:any,next:any)=>{req.session={user:{userId:req.headers['x-test-user']||owner}};next();}));server=app.listen(0);await new Promise<void>(resolve=>server.once('listening',resolve));base=`http://127.0.0.1:${(server.address() as any).port}/api/messages/groups/${group}`;
@@ -71,12 +71,22 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   await pool.query('INSERT INTO chat_view_once_media(id,owner_id,file_name,photo_bytes) VALUES($1,$2,$3,$4)',[id,owner,id+'.webp',Buffer.from('fixture')]);
   const sent=await post('/messages',{content:'Photo',messageType:'image',imageUrl:ref});assert.equal(sent.status,200);assert.equal(sent.body.message.viewOnce,true);
   assert.equal((await post('/messages',{content:'Forward',messageType:'image',imageUrl:ref})).status,409);
-  await assert.rejects(()=>media.openViewOnce(owner,id),{status:404});
+  assert.equal((await media.openViewOnce(owner,id)).toString(),'fixture');await assert.rejects(()=>media.openViewOnce(owner,id),{status:410});
   const opened=await Promise.allSettled([media.openViewOnce(peer,id),media.openViewOnce(peer,id)]);assert.equal(opened.filter(r=>r.status==='fulfilled').length,1);assert.equal(opened.filter(r=>r.status==='rejected'&&r.reason.status===410).length,1);
   await fs.unlink(file);assert.equal((await pool.query('SELECT photo_bytes FROM chat_view_once_media WHERE id=$1',[id])).rows[0].photo_bytes,null);await assert.rejects(()=>media.openViewOnce(peer,id),{status:410});
   const rows=(await history(peer)).messages;assert.equal(rows.find((m:any)=>m._id===sent.body.message._id).viewOnceOpened,true);
  });
 
+ it('only an admin can add eligible contacts; invitations are idempotent and require acceptance',async()=>{
+  const target='507f1f77bcf86cd799439099';await pool.query("INSERT INTO users(id,full_name,status) VALUES($1,'New member','active')",[target]);await pool.query('INSERT INTO user_follows VALUES($1,$2)',[owner,target]);
+  assert.equal((await post('/invite',{memberIds:[target]},peer)).status,403);
+  await pool.query("UPDATE chat_group_members SET role='admin' WHERE group_id=$1 AND user_id=$2",[group,owner]);
+  const invite=await post('/invite',{memberIds:[target]});assert.equal(invite.status,200);assert.equal(invite.body.invitedCount,1);
+  assert.equal((await post('/invite',{memberIds:[target]})).body.invitedCount,0);
+  assert.equal((await pool.query("SELECT * FROM user_notifications WHERE user_id=$1 AND type='group_invitation'",[target])).rows.length,1);
+  assert.equal((await fetch(base+'/messages',{headers:{'x-test-user':target}})).status,404);
+  assert.equal((await post('/respond',{accept:true},target)).status,200);assert.ok(Array.isArray((await history(target)).messages));
+ });
  it('backfills older pending invitations once without sending another push',async()=>{
   await pool.query("INSERT INTO chat_group_members(group_id,user_id,status) VALUES($1,$2,'invited')",[otherGroup,peer]);
   const sql=await readFile(new URL('../../../lib/db/migrations/0067_chat_view_once.sql',import.meta.url),'utf8');await pool.query(sql);await pool.query(sql);
