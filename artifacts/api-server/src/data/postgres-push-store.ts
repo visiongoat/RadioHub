@@ -13,14 +13,15 @@ export async function* pgPushDevices(filters: { userId?: string; country?: strin
   }
 }
 export async function pgPushStatus():Promise<any>{
-  const [counts,countries]=await Promise.all([
+  const [counts,countries,delivery]=await Promise.all([
     getPostgresPool().query(`SELECT count(*)::int total,count(*) FILTER(WHERE is_active)::int active,
       count(*) FILTER(WHERE is_active AND platform='ios')::int ios,count(*) FILTER(WHERE is_active AND platform='android')::int android,
       count(*) FILTER(WHERE is_active AND token_type='expo')::int expo,count(*) FILTER(WHERE is_active AND token_type='apns')::int apns,
       count(*) FILTER(WHERE is_active AND token_type='fcm')::int fcm FROM push_tokens`),
     getPostgresPool().query("SELECT country,count(*)::int count FROM push_tokens WHERE is_active AND country<>'' GROUP BY country ORDER BY count(*) DESC,country LIMIT 10"),
+    getPostgresPool().query("SELECT COALESCE(d.platform,'unknown') AS platform,r.state,r.error_code AS error,count(*)::int count FROM push_receipts r LEFT JOIN push_tokens d ON d.id=r.push_token_id WHERE r.created_at>=now()-interval '24 hours' GROUP BY d.platform,r.state,r.error_code ORDER BY count(*) DESC"),
   ]);
-  const row=counts.rows[0];return {tokens:{total:row.total,active:row.active,byPlatform:{ios:row.ios,android:row.android},byType:{expo:row.expo,apns:row.apns,fcm:row.fcm}},topCountries:countries.rows};
+  const row=counts.rows[0];return {tokens:{total:row.total,active:row.active,byPlatform:{ios:row.ios,android:row.android},byType:{expo:row.expo,apns:row.apns,fcm:row.fcm}},topCountries:countries.rows,deliveryLast24Hours:delivery.rows};
 }
 export async function pgCleanupPushTokens():Promise<number>{
   return(await getPostgresPool().query("DELETE FROM push_tokens WHERE is_active=false AND updated_at<now()-interval '30 days'")).rowCount||0;
