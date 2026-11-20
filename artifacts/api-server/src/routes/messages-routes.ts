@@ -468,10 +468,12 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             if (!muted && !await directPairBlocked(fromUserId,targetId)) {
                 try {
                     // Upsert: one unread notification per sender (10 messages → 1 notification)
+                    const preview=validType==='image'?'📷 Fotoğraf':validType==='audio'?'Sesli mesaj':validType==='gif'?'GIF':validType==='station'?'Bir radyo paylaştı':storedContent.slice(0,200);
                     const notificationInput = {
                         userId: targetId.toString(), fromUserId,
-                        title: "Yeni mesaj",
-                        message: `${sender?.fullName || sender?.username || "Someone"} size mesaj yazdı`,
+                        title: sender?.fullName||sender?.username||'MegaRadio',
+                        message: preview,
+                        data:{screen:'messages',userId:fromUserId,messageId:message._id.toString(),userName:sender?.fullName||sender?.username||'',userAvatar:sender?.avatar||sender?.profileImageUrl||''},
                         createdAt: new Date(),
                     };
                     if(!isViewingConversation){
@@ -488,7 +490,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                     void import('../services/pushNotificationService')
                         .then(async ({ PushNotificationService }) => {if(await directPairBlocked(fromUserId,targetId))return;return PushNotificationService.sendToUserAllChannels(targetId.toString(), {
                         title: sender?.fullName || sender?.username || 'Mega Radio',
-                        body: 'Yeni bir mesajınız var.',
+                        body: preview,
                         data: { type: 'new_message', screen: 'messages', fromUserId, messageId:message._id.toString(), userAvatar:sender?.avatar||sender?.profileImageUrl||'', userName: sender?.fullName || sender?.username || 'MegaRadio' },
                         url: '/profile/messages',
                         tag: `dm-${fromUserId}`,
@@ -498,7 +500,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                         type: "notification:new_message",
                         messageId:message._id.toString(),
                         fromUser: { _id: fromUserId, username: sender?.username, fullName: sender?.fullName, avatar: sender?.avatar || sender?.profileImageUrl },
-                        preview: content.trim().substring(0, 60),
+                        preview,
                     });
                 }
                 catch { }

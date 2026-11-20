@@ -184,11 +184,12 @@ export class PushNotificationService {
     followedUserId: string,
     followerName: string,
     followerSlug?: string,
-    followerId?: string
+    followerId?: string,
+    followerAvatar?:string
   ): Promise<boolean> {
     const payload: NotificationPayload = {
-      title: 'New Follower',
-      body: `${followerName} started following you`,
+      title: followerName,
+      body: 'Seni takip etmeye başladı.',
       icon: '/favicon.png',
       badge: '/favicon.png',
       url: followerSlug ? `/community/profile/${followerSlug}` : '/community',
@@ -197,6 +198,7 @@ export class PushNotificationService {
       data: {
         type: 'follow',
         followerName,
+        userName:followerName,userAvatar:followerAvatar||'',
         followerSlug,
         screen: 'user-profile',
         userId: followerId,

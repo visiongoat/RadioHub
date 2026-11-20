@@ -1594,7 +1594,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 message: `${currentUser?.fullName || currentUser?.username || 'Someone'} started following you`,
                 data: { followerId: currentUserId, userName: currentUser?.fullName || currentUser?.username || 'MegaRadio', userAvatar: currentUser?.avatar || currentUser?.profileImageUrl }
             });
-            void import('../services/pushNotificationService').then(({ PushNotificationService }) => PushNotificationService.sendFollowNotification(followingUserId, currentUser?.fullName || currentUser?.username || 'MegaRadio', currentUser?.slug, currentUserId)).catch(() => {});
+            void import('../services/pushNotificationService').then(({ PushNotificationService }) => PushNotificationService.sendFollowNotification(followingUserId, currentUser?.fullName || currentUser?.username || 'MegaRadio', currentUser?.slug, currentUserId,currentUser?.avatar||currentUser?.profileImageUrl)).catch(() => {});
             const { invalidateSocialCacheForUser } = deps;
             await Promise.all([
                 invalidateSocialCacheForUser(currentUserId, currentUser?.email),
