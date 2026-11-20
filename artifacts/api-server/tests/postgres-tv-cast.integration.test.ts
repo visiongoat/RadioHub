@@ -256,7 +256,8 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
     await tv.deactivatePushToken(inactive,owner);
     const own=[];for await(const row of pgPushDevices({userId:owner,country:'DE'}))own.push(row);
     assert.equal(own.length,1);assert.equal(own[0].tokenType,'apns');
-    const status=await pgPushStatus();assert.equal(status.tokens.total,3);assert.equal(status.tokens.active,2);assert.equal(status.tokens.byType.fcm,0);
+    await pool.query("INSERT INTO push_receipts(ticket_id,push_token_id,state,error_code) VALUES($1,$2,'error','InvalidCredentials')",[randomUUID(),own[0].id]);
+    const status=await pgPushStatus();assert.deepEqual(status.deliveryLast24Hours,[{platform:'ios',state:'error',error:'InvalidCredentials',count:1}]);assert.equal(status.tokens.total,3);assert.equal(status.tokens.active,2);assert.equal(status.tokens.byType.fcm,0);
     assert.equal(await pgCleanupPushTokens(),0);
     await pool.query("UPDATE push_tokens SET updated_at=now()-interval '31 days' WHERE token=$1",[inactive]);
     assert.equal(await pgCleanupPushTokens(),1);assert.equal((await pgPushStatus()).tokens.total,2);

@@ -42,7 +42,7 @@ async function sendExpoNotifications(devices:{id:string;token:string}[],payload:
  let accepted=0;
  for(let offset=0;offset<eligible.length;offset+=100){
   const batch=eligible.slice(offset,offset+100);
-  const result=await expoPushRequest('send',batch.map(device=>({to:device.token,title:payload.title,body:payload.body,data:{...(payload.data||{}),url:payload.url,tag:payload.tag},sound:'default',badge:1,channelId:['new_message','station_mention'].includes(payload.data?.type)?'messages':payload.data?.type==='follow'?'followers':'default'})));
+  const result=await expoPushRequest('send',batch.map(device=>({to:device.token,title:payload.title,body:payload.body,data:{...(payload.data||{}),url:payload.url,tag:payload.tag},sound:'default',priority:'high',badge:1,channelId:['new_message','station_mention'].includes(payload.data?.type)?'messages':payload.data?.type==='follow'?'followers':'default'})));
   if(!Array.isArray(result?.data))continue;
   for(let index=0;index<batch.length;index++){
    const ticket=result.data[index];
