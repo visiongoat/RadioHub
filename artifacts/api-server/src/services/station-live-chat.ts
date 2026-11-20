@@ -1,3 +1,4 @@
+import {hydrateRoomMentions,notifyRoomMentions} from './station-chat-mentions';
 import { createHash, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { WebSocket } from "ws";
@@ -56,7 +57,7 @@ export async function roomPage(
       [station, actor, before || ""],
     )
   ).rows;
-  return { messages: rows.slice(0, 50).reverse(), hasMore: rows.length > 50 };
+  return { messages: await hydrateRoomMentions(rows.slice(0, 50).reverse()), hasMore: rows.length > 50 };
 }
 export async function sendRoomMessage(
   station: string,
@@ -122,7 +123,8 @@ export async function sendRoomMessage(
     );
     await notifyRoom(db, station, { type: "message", message });
     await db.query("COMMIT");
-    return message;
+    void notifyRoomMentions(message).catch(error=>console.error("[station-chat] mention delivery failed",error?.message));
+    return (await hydrateRoomMentions([message]).catch(()=>[message]))[0];
   } catch (error) {
     await db.query("ROLLBACK").catch(() => {});
     throw error;
@@ -299,6 +301,7 @@ export class StationChatHub {
           )
         ).rows[0];
         if (!message) return;
+        message.mentions=(await hydrateRoomMentions([message]))[0].mentions;
         const blocked = new Set(
           (
             await getPostgresPool().query(

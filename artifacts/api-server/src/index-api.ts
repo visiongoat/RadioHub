@@ -505,6 +505,7 @@ app.use(session(sessionConfig));
 (async () => {
   initLogCollector();
   await initializePostgres();
+  (await import('./services/push-receipts')).startPushReceiptWorker();
   await seedPostgresDefaultLanguages();
 
   const server = await registerRoutes(app, { mode: 'api-only' });

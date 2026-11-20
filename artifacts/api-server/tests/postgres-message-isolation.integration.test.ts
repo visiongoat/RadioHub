@@ -20,6 +20,8 @@ before(async () => {
   admin = new pg.Pool({ connectionString, ssl: false, max: 1 });
   await admin.query(`CREATE SCHEMA "${schema}"`);
   pool = new pg.Pool({ connectionString, ssl: false, max: 2, options: `-c search_path=${schema}` });
+  await pool.query(`CREATE TABLE users(id text PRIMARY KEY,full_name text,username text,avatar text,source jsonb DEFAULT '{}')`);
+  await pool.query(`INSERT INTO users(id,full_name,username,avatar) VALUES ('b','Sender B','sender-b','/uploads/b.jpg')`);
   await pool.query(`CREATE TABLE direct_messages (
     id text PRIMARY KEY,from_user_id text NOT NULL,to_user_id text NOT NULL, content text,
     message_type text DEFAULT 'text',image_url text,is_read boolean DEFAULT false,read_at timestamptz,
@@ -50,6 +52,8 @@ test('notification receipts preserve unread arrivals and enforce recipient owner
   assert.equal(page.pagination.page,1); assert.equal(page.pagination.limit,1);
   assert.equal(page.notifications.length,1); assert.equal(page.notifications[0].read,true);
   assert.equal(page.unreadCount,0);
+  assert.equal(page.notifications[0].fromUserId.fullName,'Sender B');
+  assert.equal(page.notifications[0].fromUserId.avatar,'/uploads/b.jpg');
   assert.equal((await notifications.pgListNotifications('c',1,1000)).notifications[0].read,false);
 });
 after(async () => {

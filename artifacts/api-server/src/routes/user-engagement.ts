@@ -1,3 +1,4 @@
+import {publishStoredNotification} from '../services/notification-events';
 import express from 'express';
 import { engagementStore, UserEngagementService } from '../services/user-engagement-service';
 import { pgResolveUserId, pgPublicProfileCacheIdentity, pgFollowPage } from '../data/postgres-engagement-store';
@@ -275,10 +276,11 @@ router.post('/follow/:userId', async (req, res) => {
             type: 'follow',
             title: 'New Follower',
             message: `${followerName} started following you`,
-            data: { followerId: currentUserId, followerSlug }
+            data: { followerId: currentUserId, followerSlug, userName:followerName, userAvatar:follower?.avatar||follower?.profileImageUrl }
         };
         {
             await pgCreateNotification({ id: notificationId, ...notification });
+            await publishStoredNotification(targetUserId,notification.type,notification.data);
         }
         // Send push notification (web + mobile, non-blocking)
         PushNotificationService.sendFollowNotification(targetUserId, followerName, followerSlug, currentUserId).catch(() => { });

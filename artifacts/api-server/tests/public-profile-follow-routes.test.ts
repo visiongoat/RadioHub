@@ -76,6 +76,7 @@ mock.module('../src/data/auth-token-store', { namedExports: {
 } });
 mock.module('../src/data/postgres-user-store', { namedExports: {
   pgFindUserById: async (id: string) => ({ _id: id, fullName: 'Fixture listener', slug: `${id}-slug` }),
+  pgUserFollowCounts: async (id:string) => ({followersCount:[...relationships].filter(pair=>pair.endsWith(':'+id)).length,followingCount:[...relationships].filter(pair=>pair.startsWith(id+':')).length}),
   newPublicUserId: () => 'notification', userStore: 'postgres',
 } });
 mock.module('../src/services/pushNotificationService', { namedExports: {
@@ -155,7 +156,8 @@ test('follow and unfollow refresh warm alias caches for both users and all viewe
     assert.equal((await getProfile('viewer', full)).followingCount, 0);
   }
   assert.ok(unrelatedKeys.every(key => cache.has(key)));
-  assert.equal(cleared.length, 8);
+  assert.equal(cleared.filter(key=>!key.startsWith('notifications:postgres:')).length,8);
+  assert.ok(cleared.includes('notifications:postgres:target:'));
 });
 
 test('failed or unauthenticated follows do not change follow state or evict warm profiles', async () => {

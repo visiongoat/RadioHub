@@ -1,3 +1,4 @@
+import { pgUserFollowCounts } from '../data/postgres-user-store';
 import { pgCommunityFavorites, pgPublicProfile, pgRateStation, pgRecentlyPlayed, pgSetFavorite, pgSetFollow, pgStationRatings, pgTrendingStations, pgUserFavorites, } from '../data/postgres-engagement-store';
 import { getCommunityProfiles, invalidateCommunityProfiles } from './community-profiles';
 import { ensurePostgresUser } from '../data/auth-token-store';
@@ -18,6 +19,10 @@ async function invalidateFavoriteProfile(userId: string): Promise<void> {
         invalidatePublicProfileSummaries(userId),
         publicStationCache.clearByPattern(`user-engagement-favs:v2:${userId}:`),
     ]);
+}
+async function publishFollowCounts(...ids:string[]) {
+  const {chatService}=await import('./chat-service');
+  await Promise.all(ids.map(async userId=>{chatService.sendToUser(userId,{type:'social:counts',userId,...await pgUserFollowCounts(userId)});}));
 }
 export const engagementStore: string = "postgres";
 export interface TrendingStation {
@@ -122,12 +127,14 @@ export class UserEngagementService {
     async followUser(followerId: string, followeeId: string): Promise<any> {
         const result = await pgSetFollow(followerId, followeeId, true);
         await invalidatePublicProfileSummaries(followerId, followeeId);
+        await publishFollowCounts(followerId,followeeId).catch(()=>{});
         return result;
     }
     // Unfollow a user
     async unfollowUser(followerId: string, followeeId: string): Promise<any> {
         const result = await pgSetFollow(followerId, followeeId, false);
         await invalidatePublicProfileSummaries(followerId, followeeId);
+        await publishFollowCounts(followerId,followeeId).catch(()=>{});
         return result;
     }
     // Get popular user profiles
