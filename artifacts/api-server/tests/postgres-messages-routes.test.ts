@@ -245,9 +245,9 @@ test("PostgreSQL presence broadcasts include subsequent contact pages", async ()
   assert.equal(broadcasts.at(-1)?.payload.online, true);
 });
 
-test("new conversations require an open recipient profile", async () => {
+test("a one-way follower can start a conversation even when recipient favorites are private", async () => {
   privateUser.isPublicProfile = false;
-  try { const response = await fetch(`${baseUrl}/api/messages/send`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({toUserId:partnerId,content:'Hello'})}); assert.equal(response.status,403); }
+  try { const response = await fetch(`${baseUrl}/api/messages/send`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({toUserId:partnerId,content:'Hello'})}); assert.equal(response.status,200); }
   finally { privateUser.isPublicProfile = true; }
 });
 test("existing recipients can reply without following back", async () => {

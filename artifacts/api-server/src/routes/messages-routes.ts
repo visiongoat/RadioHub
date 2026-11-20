@@ -1,3 +1,4 @@
+import {privateChatDirectory,openViewOnce,viewOnceId,cleanupViewOnce} from '../data/chat-view-once';
 import {optimizeChatPhoto} from '../services/chat-photo-processing';
 import {directPairBlocked,directBlockedPeers,withAllowedDirectPair} from '../data/direct-chat-safety';
 import {registerDirectChatSafetyRoutes} from './direct-chat-safety-routes';
@@ -133,13 +134,13 @@ async function canChat(userA: string, userB: string): Promise<boolean> {
         return aFollowsB || bFollowsA;
     }
 }
-// Starting a conversation requires following an open profile. Existing participants
+// Starting a conversation requires following the recipient. Existing participants
 // may reply without following the sender back; reading old history remains allowed.
 async function canSendConversation(senderId: string, recipientId: string): Promise<boolean> {
     if (await directPairBlocked(senderId,recipientId)) return false;
     if (await pgHasConversation(senderId, recipientId)) return true;
     const [follows, recipient] = await Promise.all([pgIsFollowing(senderId, recipientId), pgFindUserById(recipientId)]);
-    return follows && recipient?.isPublicProfile === true;
+    return follows && !!recipient && (!recipient.status || recipient.status === 'active');
 }
 async function canReadConversation(userId: string, partnerId: string): Promise<boolean> {
     return await canChat(userId, partnerId) || await pgHasConversation(userId, partnerId);
@@ -147,6 +148,7 @@ async function canReadConversation(userId: string, partnerId: string): Promise<b
 // ─── Route registration ───────────────────────────────────────────────────────
 export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, deps: any) {
     const { requireAuth } = deps;
+    const photoCleanup=setInterval(()=>{void cleanupViewOnce().catch(()=>{});},60*60*1000);photoCleanup.unref();
     app.use('/api/messages', (_req, res, next) => {
         res.setHeader('Cache-Control', 'private, no-store');
         next();
@@ -270,6 +272,20 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         catch{res.status(500).json({error:'Voice upload failed'});}
       });
     });
+    const onceUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1}});
+    app.post('/api/messages/upload-view-once',requireAuth,imageUploadLimiter,(req:any,res)=>{
+      onceUpload.single('image')(req,res,async(error:any)=>{
+        if(error||!req.file?.buffer)return void res.status(400).json({error:'Photo upload failed'});
+        const actor=getSessionUserId(req);if(!actor)return void res.status(401).json({error:'Not authenticated'});
+        const id=crypto.randomBytes(16).toString('hex'),directory=privateChatDirectory(),file=path.join(directory,id+'.input');
+        try{await cleanupViewOnce();await fs.mkdir(directory,{recursive:true});await fs.writeFile(file,req.file.buffer,{flag:'wx'});const processed=await optimizeChatPhoto(file);if(processed===file)throw Error('Animated view-once is unsupported');await getPostgresPool().query('INSERT INTO chat_view_once_media(id,owner_id,file_name) VALUES($1,$2,$3)',[id,actor,path.basename(processed)]);res.json({imageUrl:`view-once:${id}`});}
+        catch{await fs.unlink(file).catch(()=>{});await fs.unlink(path.join(directory,id+'.webp')).catch(()=>{});res.status(400).json({error:'Photo upload failed'});}
+      });
+    });
+    app.post('/api/messages/view-once/:id/open',requireAuth,imageUploadLimiter,async(req,res)=>{
+      try{const actor=getSessionUserId(req);if(!actor)return void res.status(401).json({error:'Not authenticated'});const bytes=await openViewOnce(actor,String(req.params.id));res.set({'Content-Type':'image/webp','Cache-Control':'private, no-store, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff'});res.send(bytes);}
+      catch(error:any){res.status(error.status||500).json({error:error.status?error.message:'Photo unavailable'});}
+    });
     // ── POST /api/messages/upload-image ─────────────────────────────────────────
     const chatUploadsDir = path.resolve(process.cwd(), 'public', 'uploads', 'chat');
     fs.mkdir(chatUploadsDir, { recursive: true }).catch(() => { });
@@ -382,7 +398,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             const allowed = await canSendConversation(fromUserId, targetId.toString());
             if (!allowed) {
                 return void res.status(403).json({
-                    error: "Follow this public profile before starting a conversation",
+                    error: "Follow this user before starting a conversation",
                 });
             }
             const targetUser: any = await pgFindUserById(targetId.toString());
@@ -390,7 +406,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                 return void res.status(404).json({ error: "User not found" });
             }
             const validType = ['text', 'image', 'emoji', 'gif', 'audio', 'station'].includes(messageType) ? messageType : 'text';
-            if (validType === 'image' && (typeof imageUrl !== 'string' || !/^\/uploads\/chat\/[a-z0-9_-]+\.(?:jpe?g|png|gif|webp)$/i.test(imageUrl)))
+            if (validType === 'image' && !viewOnceId(imageUrl) && (typeof imageUrl !== 'string' || !/^\/uploads\/chat\/[a-z0-9_-]+\.(?:jpe?g|png|gif|webp)$/i.test(imageUrl)))
                 return void res.status(400).json({ error: 'Invalid uploaded image URL' });
             // GIFs store a KLIPY reference, never arbitrary external media URLs.
             if (validType === 'audio' && !validChatAudioPath(imageUrl)) return void res.status(400).json({error:'Invalid voice URL'});

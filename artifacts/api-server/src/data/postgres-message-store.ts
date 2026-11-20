@@ -1,3 +1,4 @@
+import {claimViewOnce,viewOnceId} from './chat-view-once';
 import {directPairBlocked} from './direct-chat-safety';
 import { getPostgresPool } from "../postgres-runtime";
 import { newPublicUserId } from "./postgres-user-store";
@@ -8,7 +9,7 @@ function shape(row: any): any {
   return {
     _id: row.id, fromUserId: row.from_user_id, toUserId: row.to_user_id,
     reactions:row.deleted_at?[]:row.reactions||[],reactionsRevision:Number(row.reactions_revision||0),
-    content: row.content, messageType: row.message_type, imageUrl: row.image_url,
+    viewOnce:!!viewOnceId(row.image_url),viewOnceOpened:!!row.view_once_opened,content: row.content, messageType: row.message_type, imageUrl: row.image_url,
     replyToId:row.reply_to_id||null, ...(row.reply_to?{replyTo:row.reply_to}:{}), pinnedAt:row.pinned_at||null,pinUpdatedAt:row.updated_at, deletedAt:row.deleted_at||null, read: row.is_read, readAt: row.read_at, createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -29,6 +30,7 @@ export async function pgCreateMessage(input: {
     `INSERT INTO direct_messages(id,from_user_id,to_user_id,content,message_type,image_url,created_at,reply_to_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [input.id||newPublicUserId(),input.fromUserId,input.toUserId,input.content,input.messageType,input.imageUrl||null,input.createdAt||new Date(),input.replyToId||null]);
+   if(viewOnceId(input.imageUrl))await claimViewOnce(db,input.fromUserId,input.imageUrl!,'direct',input.toUserId,result.rows[0].id,[input.toUserId]);
    await db.query("UPDATE chat_inbox_state SET deleted=false,updated_at=now() WHERE kind='direct' AND ((user_id=$1 AND target_id=$2) OR (user_id=$2 AND target_id=$1)) AND deleted",[input.fromUserId,input.toUserId]);
    await db.query('COMMIT');return shape(result.rows[0]);
   }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
@@ -38,7 +40,7 @@ export async function pgConversationMessages(
   userId: string, partnerId: string, before: string | undefined, limit: number,
 ): Promise<any[]> {
   const result = await getPostgresPool().query(
-    `SELECT m.*,(SELECT jsonb_build_object('_id',r.id,'fromUserId',r.from_user_id,'content',CASE WHEN r.deleted_at IS NULL THEN r.content ELSE '' END,'messageType',r.message_type,'deletedAt',r.deleted_at) FROM direct_messages r WHERE r.id=m.reply_to_id AND NOT ($1=ANY(r.hidden_for))) reply_to FROM direct_messages m WHERE
+    `SELECT m.*,(SELECT $1=ANY(v.opened_by) FROM chat_view_once_media v WHERE v.id=replace(m.image_url,'view-once:','')) view_once_opened,(SELECT jsonb_build_object('_id',r.id,'fromUserId',r.from_user_id,'content',CASE WHEN r.deleted_at IS NULL THEN r.content ELSE '' END,'messageType',r.message_type,'deletedAt',r.deleted_at) FROM direct_messages r WHERE r.id=m.reply_to_id AND NOT ($1=ANY(r.hidden_for))) reply_to FROM direct_messages m WHERE
        ((from_user_id=$1 AND to_user_id=$2) OR (from_user_id=$2 AND to_user_id=$1))
        AND NOT ($1=ANY(hidden_for))
        AND ($3='' OR (created_at,id)<(SELECT created_at,id FROM direct_messages WHERE id=$3
