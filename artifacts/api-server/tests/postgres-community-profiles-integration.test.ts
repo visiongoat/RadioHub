@@ -81,6 +81,20 @@ describe('PostgreSQL community identity, privacy and favorite activity', { skip:
     ]) await pool.query('INSERT INTO user_favorites(user_id,station_id,created_at) VALUES($1,$2,$3)', [id, station, `${at}T00:00:00Z`]);
   });
 
+  it('finds a new public profile without favorites, excludes private/inactive users and treats wildcard input literally', async()=>{
+    await pool.query("UPDATE users SET full_name='Halil Haydar Telci',username='halil.telci' WHERE id='empty'");
+    const result=await engagement.pgSearchPublicProfiles('halil haydar telci');
+    assert.deepEqual(result.map(person=>person._id),['empty']);
+    assert.equal(result[0].email,undefined);assert.equal(result[0].source,undefined);
+    assert.equal((await engagement.pgSearchPublicProfiles('private')).length,0);
+    assert.equal((await engagement.pgSearchPublicProfiles('suspended')).length,0);
+    assert.equal((await engagement.pgSearchPublicProfiles('%%')).length,0);
+    await pool.query("UPDATE users SET full_name='Şahin Yoğurtcu' WHERE id='empty'");
+    assert.equal((await engagement.pgSearchPublicProfiles('sahin yogurtcu'))[0]._id,'empty');
+    assert.equal((await engagement.pgSearchPublicProfiles('a')).length,0);
+    assert.equal((await engagement.pgSearchPublicProfiles('username',1)).length,1);
+  });
+
   it('returns real public names and canonical/legacy avatars with compatible numeric count aliases, never email', async () => {
     const profiles = await engagement.pgPopularProfiles(20);
     const current = profiles.find(profile => profile._id === 'a-recent')!;

@@ -103,7 +103,7 @@ export class PushNotificationService {
   /**
    * Send to user via ALL channels: web push + mobile push tokens
    */
-  static async sendToUserAllChannels(userId: string, payload: NotificationPayload): Promise<boolean> {
+  static async sendToUserAllChannels(userId: string, payload: NotificationPayload, options:{skipWeb?:boolean}={}): Promise<boolean> {
     try {
       const user = await pgFindUserById(userId);
       if (!user) return false;
@@ -112,7 +112,7 @@ export class PushNotificationService {
       if(preferences.pushEnabled===false||(category&&preferences[category]===false))return false;
     } catch { return false; }
     const [web, mobile] = await Promise.allSettled([
-      this.sendToUser(userId, payload),
+      options.skipWeb ? Promise.resolve(false) : this.sendToUser(userId, payload),
       this.sendToMobileUser(userId, payload),
     ]);
     const webOk = web.status === 'fulfilled' && web.value;

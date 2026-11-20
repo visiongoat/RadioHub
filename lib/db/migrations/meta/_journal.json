@@ -484,6 +484,13 @@
       "idx": 68,
       "tag": "0065_push_receipts",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "when": 1795205022723,
+      "idx": 69,
+      "tag": "0066_public_profile_search",
+      "breakpoints": true
     }
   ]
 }

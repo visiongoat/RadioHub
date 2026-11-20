@@ -1,3 +1,4 @@
+import {optimizeChatPhoto} from '../services/chat-photo-processing';
 import {directPairBlocked,directBlockedPeers,withAllowedDirectPair} from '../data/direct-chat-safety';
 import {registerDirectChatSafetyRoutes} from './direct-chat-safety-routes';
 import {setChatReaction,validChatReaction} from '../data/chat-reactions';
@@ -303,7 +304,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                 await fs.unlink(req.file.path).catch(() => { });
                 return void res.status(400).json({ error: 'Invalid image format' });
             }
-            const imageUrl = `/uploads/chat/${req.file.filename}`;
+            const processed=await optimizeChatPhoto(req.file.path);
+            const imageUrl = `/uploads/chat/${path.basename(processed)}`;
             res.json({ imageUrl });
         }
         catch (error) {
@@ -443,10 +445,11 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             };
             chatService.sendToUser(targetId.toString(), wsPayload);
             chatService.sendToUser(fromUserId, { ...wsPayload, echo: true });
-            // Only notify if recipient is NOT currently viewing this conversation
+            // A viewed web tab must not suppress the recipient phone’s lock-screen delivery.
+            // The foreground phone suppresses its own visible conversation locally.
             const isViewingConversation = chatService.isViewingConversation(targetId.toString(), fromUserId);
-            const muted=!isViewingConversation && (await getPostgresPool().query("SELECT 1 FROM chat_inbox_state WHERE user_id=$1 AND kind='direct' AND target_id=$2 AND muted",[targetId.toString(),fromUserId])).rows.length>0;
-            if (!isViewingConversation && !muted && !await directPairBlocked(fromUserId,targetId)) {
+            const muted=(await getPostgresPool().query("SELECT 1 FROM chat_inbox_state WHERE user_id=$1 AND kind='direct' AND target_id=$2 AND muted",[targetId.toString(),fromUserId])).rows.length>0;
+            if (!muted && !await directPairBlocked(fromUserId,targetId)) {
                 try {
                     // Upsert: one unread notification per sender (10 messages → 1 notification)
                     const notificationInput = {
@@ -455,7 +458,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                         message: `${sender?.fullName || sender?.username || "Someone"} size mesaj yazdı`,
                         createdAt: new Date(),
                     };
-                    {
+                    if(!isViewingConversation){
                         await pgUpsertMessageNotification({
                             ...notificationInput,
                         });
@@ -470,13 +473,14 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                         .then(async ({ PushNotificationService }) => {if(await directPairBlocked(fromUserId,targetId))return;return PushNotificationService.sendToUserAllChannels(targetId.toString(), {
                         title: sender?.fullName || sender?.username || 'Mega Radio',
                         body: 'Yeni bir mesajınız var.',
-                        data: { type: 'new_message', screen: 'messages', fromUserId, userName: sender?.fullName || sender?.username || 'MegaRadio' },
+                        data: { type: 'new_message', screen: 'messages', fromUserId, messageId:message._id.toString(), userAvatar:sender?.avatar||sender?.profileImageUrl||'', userName: sender?.fullName || sender?.username || 'MegaRadio' },
                         url: '/profile/messages',
                         tag: `dm-${fromUserId}`,
-                    } as any);})
+                    } as any,{skipWeb:isViewingConversation});})
                         .catch(() => { });
-                    chatService.sendToUser(targetId.toString(), {
+                    if(!isViewingConversation)chatService.sendToUser(targetId.toString(), {
                         type: "notification:new_message",
+                        messageId:message._id.toString(),
                         fromUser: { _id: fromUserId, username: sender?.username, fullName: sender?.fullName, avatar: sender?.avatar || sender?.profileImageUrl },
                         preview: content.trim().substring(0, 60),
                     });

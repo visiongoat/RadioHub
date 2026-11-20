@@ -28,3 +28,8 @@ test('radio/favorite/recommendation helpers cannot bypass master or category pre
  assert.equal(deliveries,0);
  settings={recommendations:true};assert.equal(await PushNotificationService.sendStationRecommendation('fixture',[{name:'Fixture'}]),true);assert.equal(deliveries,2);
 });
+
+test('an open web conversation cannot suppress a locked phone; channel policy still respects preferences',async()=>{
+ deliveries=0;settings={};assert.equal(await PushNotificationService.sendToUserAllChannels('fixture',payload('new_message'),{skipWeb:true}),true);assert.equal(deliveries,1);
+ settings={messages:false};await PushNotificationService.sendToUserAllChannels('fixture',payload('new_message'),{skipWeb:true});assert.equal(deliveries,1);
+});

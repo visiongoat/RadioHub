@@ -519,3 +519,25 @@ export async function pgAddRecentlyPlayed(userId: string, stationId: string): Pr
     client.release();
   }
 }
+
+/** Search the public directory independently of favorites/ranking caches, including brand-new accounts. */
+export async function pgSearchPublicProfiles(search: string, requestedLimit = 50): Promise<any[]> {
+  const term = search.trim().slice(0,100).toLocaleLowerCase('en').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i').replace(/\s+/g,' ');
+  if (term.length < 2) return [];
+  const limit = Math.max(1,Math.min(100,Math.trunc(Number(requestedLimit))||50));
+  // Literal substring matching avoids wildcard expansion and never scans a client-truncated top-100 cohort.
+  const pattern='%'+term.replace(/[\\%_]/g,'\\$&')+'%';
+  const {rows} = await pool().query(`WITH matches AS (
+    SELECT u.id AS _id,u.full_name AS "fullName",u.username,u.slug,u.avatar,
+      u.source->>'profileImageUrl' AS "profileImageUrl",u.created_at AS "createdAt",
+      translate(lower(COALESCE(u.full_name,'')),'çğıöşü','cgiosu') AS full_key,
+      translate(lower(COALESCE(u.username,'')),'çğıöşü','cgiosu') AS user_key
+    FROM users u WHERE u.is_public_profile=true AND u.status='active'
+  ) SELECT _id,"fullName",username,slug,avatar,"profileImageUrl","createdAt",
+    (SELECT count(*)::int FROM user_favorites f JOIN stations s ON s.id=f.station_id WHERE f.user_id=matches._id
+      AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))) AS "favoriteCount" FROM matches
+    WHERE full_key LIKE $1 OR user_key LIKE $1
+    ORDER BY CASE WHEN user_key=$2 OR full_key=$2 THEN 0 WHEN starts_with(full_key,$2) OR starts_with(user_key,$2) THEN 1 ELSE 2 END,"createdAt" DESC NULLS LAST,_id
+    LIMIT $3`,[pattern,term,limit]);
+  return rows.map(row=>({...row,...publicUserIdentity(row),id:row._id,favorites_count:row.favoriteCount,favoriteStationsCount:row.favoriteCount}));
+}

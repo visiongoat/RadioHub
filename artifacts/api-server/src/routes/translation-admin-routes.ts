@@ -2067,7 +2067,9 @@ ${keysText}`;
             res.set('Cache-Control', 'no-store');
             res.set('CDN-Cache-Control', 'no-store');
             res.set('Cloudflare-CDN-Cache-Control', 'no-store');
-            return void res.json({ data: await getCommunityProfiles(Number(req.query.limit) || 100) });
+            const search=typeof req.query.search==='string'?req.query.search.trim():'';
+            if(search.length>100)return void res.status(400).json({error:'Search is too long'});
+            return void res.json({ data: search ? await (await import('../data/postgres-engagement-store')).pgSearchPublicProfiles(search,Number(req.query.limit)||50) : await getCommunityProfiles(Number(req.query.limit) || 100) });
         }
         catch (error) {
             console.error('Error fetching public profiles:', error);
