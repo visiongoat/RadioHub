@@ -596,6 +596,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             const onlineContacts = (await pgMessageContacts(userId)).filter(contact => !blockedPeers.has(String(contact._id)) && chatService.isOnline(String(contact._id))).map(contact => String(contact._id));
             const client = chatService.addClient(userId, socket);
             let activeRevision = 0;
+            let lastGroupTyping = 0;
             broadcastOnlineStatus(userId, true);
             socket.send(JSON.stringify({
                 type: "chat:connected",
@@ -606,6 +607,13 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                 try {
                     const msg = JSON.parse(rawData.toString());
                     switch (msg.type) {
+                        case "group:typing": {
+                            if(typeof msg.groupId!=='string'||!/^[0-9a-f]{24}$/i.test(msg.groupId)||Date.now()-lastGroupTyping<1500)break;
+                            lastGroupTyping=Date.now();
+                            const audience=await getPostgresPool().query("SELECT other.user_id FROM chat_group_members me JOIN chat_group_members other ON other.group_id=me.group_id WHERE me.group_id=$1 AND me.user_id=$2 AND me.status='active' AND other.status='active' AND other.user_id<>$2",[msg.groupId,userId]);
+                            if(socket.readyState===1&&audience.rows.length)chatService.broadcastToUsers(audience.rows.map((row:any)=>row.user_id),{type:'group:typing',groupId:msg.groupId,fromUserId:userId});
+                            break;
+                        }
                         case "chat:typing": {
                             if (typeof msg.toUserId !== 'string' || !/^[0-9a-f]{24}$/i.test(msg.toUserId) || !await canSendConversation(userId, msg.toUserId))
                                 break;

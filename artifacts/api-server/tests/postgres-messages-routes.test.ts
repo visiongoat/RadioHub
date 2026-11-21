@@ -33,9 +33,10 @@ let hasHistory = false;
 let deletionCreatedAt=()=>new Date(Date.now()-60000).toISOString();
 
 let blocked=false;const safetyChanges:any[]=[];
+let typingMember=false;
 let muted=false;const pushCalls:any[]=[];
 mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async(...args:any[])=>{pushCalls.push(args);return true;}}}});
-mock.module(new URL('../src/postgres-runtime.ts',import.meta.url).href,{namedExports:{getPostgresPool:()=>({query:async()=>({rows:muted?[{muted:true}]:[]})})}});
+mock.module(new URL('../src/postgres-runtime.ts',import.meta.url).href,{namedExports:{getPostgresPool:()=>({query:async(sql:string)=>({rows:sql.includes('SELECT other.user_id')?(typingMember?[{user_id:partnerId}]:[]):muted?[{muted:true}]:[]})})}});
 mock.module(new URL('../src/data/direct-chat-safety.ts',import.meta.url).href,{namedExports:{lockDirectPair:async()=>{},directPairBlocked:async()=>blocked,directBlockedPeers:async()=>new Set(blocked?[partnerId,nextPageContactId]:[]),directSafety:async()=>({blocked,canContact:!blocked}),setDirectBlock:async(owner:string,target:string,value:boolean)=>{safetyChanges.push([owner,target,value]);return{blocked:value,canContact:!value};},reportDirectChat:async()=>true,withAllowedDirectPair:async(_a:string,_b:string,operation:Function)=>{if(blocked)throw Object.assign(Error('Unavailable'),{status:403});return operation({query:async()=>({rows:[]})});}}});
 mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{namedExports:{getPublicStationByIdentifier:async(id:string)=>id.endsWith('999')?null:{_id:id,name:'Canonical Radio',country:'Austria',favicon:'https://example.test/logo.png'}}});
 mock.module("express-rate-limit", {
@@ -180,7 +181,7 @@ test("PostgreSQL WebSocket read receipts persist without calling MongoDB", async
   const ticketResponse = await fetch(`${baseUrl}/api/messages/ws-ticket`);
   const { ticket } = await ticketResponse.json() as any;
   await connectionHandler({
-    send() {}, close() {},
+    readyState:1, send() {}, close() {},
     on(event: string, callback: (...args: any[]) => any) { socketHandlers[event] = callback; },
   }, { url: `/ws/chat?ticket=${ticket}`, headers: { host: "localhost" } });
   readCalls.length = 0;
@@ -335,3 +336,14 @@ test('viewed conversations still deliver to mobile, with stable message identity
  assert.equal(pushCalls.length,before+1);const [recipient,payload,options]=pushCalls.at(-1);assert.equal(recipient,partnerId);assert.equal(options.skipWeb,true);assert.ok(payload.data.messageId);assert.equal(payload.data.fromUserId,userId);
  muted=true;try{assert.equal((await request()).status,200);await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(pushCalls.length,before+1);}finally{muted=false;}
 });
+
+ test('group typing is membership scoped, throttled, and never includes draft contents',async()=>{
+  const groupId='507f1f77bcf86cd799439020';let clock=Date.now();const now=mock.method(Date,'now',()=>clock);
+  try{const start=broadcasts.length;
+   typingMember=false;await socketHandlers.message(Buffer.from(JSON.stringify({type:'group:typing',groupId,draft:'secret'})));assert.equal(broadcasts.length,start);
+   clock+=1600;typingMember=true;await socketHandlers.message(Buffer.from(JSON.stringify({type:'group:typing',groupId,draft:'secret'})));
+   assert.deepEqual(broadcasts.at(-1),{userIds:[partnerId],payload:{type:'group:typing',groupId,fromUserId:userId}});
+   const count=broadcasts.length;await socketHandlers.message(Buffer.from(JSON.stringify({type:'group:typing',groupId})));assert.equal(broadcasts.length,count);
+   clock+=1600;await socketHandlers.message(Buffer.from(JSON.stringify({type:'group:typing',groupId:'invalid'})));assert.equal(broadcasts.length,count);
+  }finally{typingMember=false;now.mock.restore();}
+ });

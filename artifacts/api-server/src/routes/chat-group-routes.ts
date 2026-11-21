@@ -119,9 +119,12 @@ export function registerChatGroupRoutes(app:Express,requireAuth:RequestHandler){
  register('post','/:id/pin',async(db,actor,req)=>{
   const g=await member(db,actor,req.params.id),{messageId,pinned}=req.body||{};if(typeof pinned!=='boolean')throw fail(400,'Invalid pin');
   const row=await readable(db,g,actor,messageId);if(row.deleted_at)throw fail(400,'Deleted message cannot be pinned');
-  await db.query('UPDATE chat_group_messages SET pinned_at=CASE WHEN $2 THEN now() ELSE NULL END,updated_at=now() WHERE id=$1',[messageId,pinned]);
+  // The group membership lookup locks g: competing pins serialize as one replacement.
+  if(pinned&&radioRequest(row.content))await db.query("UPDATE chat_group_messages SET pinned_at=NULL,updated_at=statement_timestamp() WHERE group_id=$1 AND id<>$2 AND pinned_at IS NOT NULL AND message_type='station'",[g.id,messageId]);
+  await db.query('UPDATE chat_group_messages SET pinned_at=CASE WHEN $2 THEN statement_timestamp() ELSE NULL END,updated_at=statement_timestamp() WHERE id=$1',[messageId,pinned]);
   const message=(await db.query(messageSelect()+' WHERE m.id=$1',[messageId,actor,g.joined_at])).rows[0];
-  return {data:{message},groupId:g.id,notify:await activeAudience(db,g.id),change:{messageId,pinnedAt:message?.pinnedAt,pinUpdatedAt:message?.pinUpdatedAt}};
+  const viewers=(await db.query("SELECT user_id FROM chat_group_members WHERE group_id=$1 AND status='active' AND joined_at<=$2 AND NOT (user_id=ANY($3::text[]))",[g.id,row.created_at,row.hidden_for||[]])).rows.map((m:any)=>m.user_id);
+  return {data:{message},groupId:g.id,notify:viewers,change:{messageId,...(radioRequest(row.content)?{message}:{}),pinnedAt:message?.pinnedAt,pinUpdatedAt:message?.pinUpdatedAt}};
  });
  register('post','/:id/role',async(db,actor,req)=>{
   const g=await member(db,actor,req.params.id);if(g.role!=='admin')throw fail(403,'Admin required');

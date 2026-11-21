@@ -105,3 +105,16 @@ test('category filtering precedes pagination; known types appear while expired a
   assert.equal((await notifications.pgListNotifications('categories',2,1,'stations')).notifications[0].type,'favorite_station');
   await assert.rejects(notifications.pgListNotifications('categories',1,20,'unknown' as any),/Invalid notification category/);
 });
+
+test('direct radio pin replacement is pair scoped and serializes competing members', {skip:!connectionString},async()=>{
+ const radio=JSON.stringify({version:1,stationId:id(900),intent:'together'});
+ const ids=[id(901),id(902),id(903)];
+ for(const [index,messageId] of ids.entries())await pool.query("INSERT INTO direct_messages(id,from_user_id,to_user_id,content,message_type,pinned_at) VALUES($1,$2,$3,$4,'station',now())",[messageId,index===2?'c':'a',index===2?'d':'b',radio]);
+ try{
+  const {withAllowedDirectPair}=await import('../src/data/direct-chat-safety');
+  await Promise.all([withAllowedDirectPair('a','b',db=>store.pgPinChatMessage('a',ids[0],true,db)),withAllowedDirectPair('a','b',db=>store.pgPinChatMessage('b',ids[1],true,db))]);
+  assert.equal((await store.pgPinnedChatMessages('a','b')).filter(m=>m.messageType==='station').length,1);
+  assert.ok((await pool.query('SELECT pinned_at FROM direct_messages WHERE id=$1',[ids[2]])).rows[0].pinned_at,'other conversations are untouched');
+  assert.equal(await store.pgPinChatMessage('c',ids[0],true),null);
+ }finally{await pool.query('DELETE FROM direct_messages WHERE id=ANY($1::text[])',[ids]);}
+});

@@ -4,12 +4,13 @@ import {randomBytes} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import express from 'express';
 import pg from 'pg';
+const broadcasts:any[]=[];
 const connectionString=process.env.PG_TEST_DATABASE_URL;
 let pool:pg.Pool;
 mock.module(new URL('../src/postgres-runtime.ts',import.meta.url).href,{namedExports:{getPostgresPool:()=>pool}});
 mock.module(new URL('../src/data/postgres-user-store.ts',import.meta.url).href,{namedExports:{newPublicUserId:()=>randomBytes(12).toString('hex')}});
 mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{namedExports:{getPublicStationByIdentifier:async()=>null}});
-mock.module(new URL('../src/services/chat-service.ts',import.meta.url).href,{namedExports:{chatService:{broadcastToUsers(){}}}});
+mock.module(new URL('../src/services/chat-service.ts',import.meta.url).href,{namedExports:{chatService:{broadcastToUsers(users:any,event:any){broadcasts.push({users,event});}}}});
 mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async()=>false}}});
 mock.module(new URL('../src/utils/logger.ts',import.meta.url).href,{namedExports:{logger:{error(){}}}});
 mock.module('express-rate-limit',{namedExports:{rateLimit:()=>((_req:any,_res:any,next:any)=>next())}});
@@ -87,6 +88,22 @@ describe('group message actions on isolated local PostgreSQL',{skip:!connectionS
   assert.equal((await fetch(base+'/messages',{headers:{'x-test-user':target}})).status,404);
   assert.equal((await post('/respond',{accept:true},target)).status,200);assert.ok(Array.isArray((await history(target)).messages));
  });
+ it('replaces a pinned radio atomically for all members and keeps text pins',async()=>{
+  const first='507f1f77bcf86cd799439081',second='507f1f77bcf86cd799439082',text='507f1f77bcf86cd799439083';
+  const radio=JSON.stringify({version:1,stationId:'507f1f77bcf86cd799439080',intent:'together'});
+  for(const id of [first,second])await pool.query("INSERT INTO chat_group_messages(id,group_id,from_user_id,content,message_type) VALUES($1,$2,$3,$4,'station')",[id,group,owner,radio]);
+  await pool.query("INSERT INTO chat_group_messages(id,group_id,from_user_id,content,message_type,pinned_at) VALUES($1,$2,$3,'Keep this text','text',now())",[text,group,owner]);
+  assert.equal((await post('/pin',{messageId:first,pinned:true})).status,200);
+  assert.equal((await post('/pin',{messageId:second,pinned:true},peer)).status,200);
+  const pins=(await history(peer)).pinnedMessages;
+  assert.equal(pins.find((m:any)=>m._id===first),undefined);
+  assert.ok(pins.find((m:any)=>m._id===second));assert.ok(pins.find((m:any)=>m._id===text));
+  const late='507f1f77bcf86cd799439088';await pool.query("INSERT INTO users(id) VALUES($1)",[late]);await pool.query("INSERT INTO chat_group_members(group_id,user_id,status,joined_at) VALUES($1,$2,'active',now()+interval '1 day')",[group,late]);
+  await post('/pin',{messageId:second,pinned:true});assert.ok(!broadcasts.filter(b=>b.event.type==='group:message-updated').at(-1).users.includes(late),'pin socket cannot expose pre-join history');
+
+  const race=await Promise.all([post('/pin',{messageId:first,pinned:true}),post('/pin',{messageId:second,pinned:true},peer)]);assert.ok(race.every(r=>r.status===200));assert.equal((await history(peer)).pinnedMessages.filter((m:any)=>m.messageType==='station').length,1);
+ });
+
  it('backfills older pending invitations once without sending another push',async()=>{
   await pool.query("INSERT INTO chat_group_members(group_id,user_id,status) VALUES($1,$2,'invited')",[otherGroup,peer]);
   const sql=await readFile(new URL('../../../lib/db/migrations/0067_chat_view_once.sql',import.meta.url),'utf8');await pool.query(sql);await pool.query(sql);
