@@ -505,6 +505,13 @@
       "idx": 71,
       "tag": "0068_tv_receiver_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1795273174123,
+      "tag": "0069_live_room_discovery",
+      "breakpoints": true
     }
   ]
 }

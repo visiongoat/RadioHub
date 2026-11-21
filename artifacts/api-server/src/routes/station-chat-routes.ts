@@ -1,3 +1,4 @@
+import {activeStationRooms} from '../services/station-chat-home';
 import {stationRoomSummaries,summaryStationIds} from '../services/station-room-summaries';
 import {stationChatProfilePreview} from '../services/station-chat-profile';
 import { randomBytes } from "node:crypto";
@@ -57,6 +58,11 @@ export function registerStationChatRoutes(
       }
     });
   route('get','/api/station-chat/users/:userId/preview',[limited,optional],async req=>stationChatProfilePreview(String(req.params.userId),actor(req)));
+  route('get','/api/station-chat/active',[limited,optional],async req=>{
+    const raw=String(req.query.country||'').trim();
+    if(raw.length>80)throw Object.assign(Error('INVALID_COUNTRY'),{status:400});
+    return activeStationRooms(/^(all|global)$/i.test(raw)?'':raw,actor(req));
+  });
   route('get','/api/station-chat/rooms/summary',[limited,optional],async req=>stationRoomSummaries(summaryStationIds(req.query.stations),actor(req)));
   const validate = async (req: any) => {
     if (!roomId(req.params.station))

@@ -1,3 +1,4 @@
+import {enqueueHomePreview} from './station-chat-home-moderation';
 import {hydrateRoomMentions,notifyRoomMentions} from './station-chat-mentions';
 import { createHash, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
@@ -123,6 +124,7 @@ export async function sendRoomMessage(
     );
     await notifyRoom(db, station, { type: "message", message });
     await db.query("COMMIT");
+    enqueueHomePreview(message);
     void notifyRoomMentions(message).catch(error=>console.error("[station-chat] mention delivery failed",error?.message));
     return (await hydrateRoomMentions([message]).catch(()=>[message]))[0];
   } catch (error) {
