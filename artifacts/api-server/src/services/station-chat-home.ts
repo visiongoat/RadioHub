@@ -36,6 +36,7 @@ async function roomRank(country: string, code: string) {
           SELECT m.id FROM station_chat_messages m
           JOIN station_chat_home_previews p ON p.message_id=m.id AND p.decision='approved' AND p.reviewed_content=m.content
           JOIN users u ON u.id=m.user_id AND u.is_public_profile
+          AND COALESCE(u.status,'active') NOT IN ('inactive','suspended','banned','deleted')
           WHERE m.station_id=c.station_id AND m.deleted_at IS NULL AND m.created_at>now()-interval '10 minutes'
           AND NOT EXISTS(SELECT 1 FROM station_chat_reports r WHERE r.message_id=m.id AND r.status<>'dismissed')
           AND NOT EXISTS(SELECT 1 FROM station_chat_sanctions n WHERE n.user_id=m.user_id AND n.expires_at>now())
@@ -99,9 +100,11 @@ export async function activeStationRooms(country: string, actor: string) {
      SELECT m.id AS "_id",p.display_name AS name,m.content,m.created_at AS "createdAt"
      FROM station_chat_messages m JOIN station_chat_home_previews p ON p.message_id=m.id AND p.decision='approved' AND p.reviewed_content=m.content
      JOIN users u ON u.id=m.user_id AND u.is_public_profile
+          AND COALESCE(u.status,'active') NOT IN ('inactive','suspended','banned','deleted')
      WHERE m.station_id=s.id AND m.deleted_at IS NULL AND m.created_at>now()-interval '24 hours'
      AND NOT EXISTS(SELECT 1 FROM station_chat_reports r WHERE r.message_id=m.id AND r.status<>'dismissed')
-     AND NOT EXISTS(SELECT 1 FROM station_chat_blocks b WHERE b.user_id=$2 AND b.blocked_user_id=m.user_id)
+     AND NOT EXISTS(SELECT 1 FROM station_chat_blocks b WHERE (b.user_id=$2 AND b.blocked_user_id=m.user_id) OR (b.user_id=m.user_id AND b.blocked_user_id=$2))
+     AND NOT EXISTS(SELECT 1 FROM direct_chat_blocks b WHERE (b.user_id=$2 AND b.blocked_user_id=m.user_id) OR (b.user_id=m.user_id AND b.blocked_user_id=$2))
      AND NOT EXISTS(SELECT 1 FROM station_chat_sanctions n WHERE n.user_id=m.user_id AND n.expires_at>now())
      ORDER BY m.created_at DESC,m.id DESC LIMIT 6
    ) p
