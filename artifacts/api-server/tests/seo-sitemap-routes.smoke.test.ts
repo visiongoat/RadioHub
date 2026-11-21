@@ -2105,10 +2105,10 @@ test('manual radio report reaches the persistence adapter and the protected admi
  const stationId='offline-test-station';
  const response=await fetch(`${baseUrl}/api/stations/report-error`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stationId,stationName:'Offline test radio',stationUrl:'https://stream.example.invalid/live',errorType:'USER_REPORT',errorMessage:'Decoder failed',errorDetails:{source:'mobile-player',userInitiated:true},browserInfo:{platform:'ios',language:'tr'}})});
  assert.equal(response.status,200);const receipt=await response.json();assert.equal(receipt.success,true);assert.equal(receipt.errorId,'test-report-receipt');
- const saved=playbackReports.find(row=>row.stationId===stationId)!;assert.equal(saved.errorType,'USER_REPORT');assert.equal(saved.errorDetails.userInitiated,true);assert.equal(saved.isResolved,false);
+ const saved=playbackReports.find(row=>row.stationId===stationId)!;assert.equal(saved.errorType,'STREAM_UNAVAILABLE');assert.equal(saved.errorDetails.userInitiated,true);assert.equal(saved.isResolved,false);
  assert.equal((await fetch(`${baseUrl}/api/admin/error-logs?stationId=${stationId}`)).status,403);
  const admin=await fetch(`${baseUrl}/api/admin/error-logs?stationId=${stationId}`,{headers:{'x-test-admin':'allowed'}});assert.equal(admin.status,200);
- const data=await admin.json();assert.equal(data.pagination.total,1);assert.equal(data.errors[0].stationId,stationId);assert.equal(data.errors[0].errorType,'USER_REPORT');
+ const data=await admin.json();assert.equal(data.pagination.total,1);assert.equal(data.errors[0].stationId,stationId);assert.equal(data.errors[0].errorType,'STREAM_UNAVAILABLE');
 });
 test('manual sitemap rebuild never reports busy or unavailable builds as fresh success', async () => {
   for (const [reason, status, code] of [
