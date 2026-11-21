@@ -1,3 +1,4 @@
+import {radioRequest} from '../utils/chat-radio';
 import {claimViewOnce,viewOnceId} from './chat-view-once';
 import {directPairBlocked} from './direct-chat-safety';
 import { getPostgresPool } from "../postgres-runtime";
@@ -136,7 +137,10 @@ export async function pgDeleteChatMessage(userId:string,id:string,scope:'self'|'
 
 /** Pins are shared within the participant-only conversation. */
 export async function pgPinChatMessage(userId:string,id:string,pinned:boolean,db:{query:Function}=getPostgresPool()):Promise<any|null>{
- const result=await db.query(`UPDATE direct_messages SET pinned_at=CASE WHEN $3 THEN now() ELSE NULL END,updated_at=now() WHERE id=$1 AND (from_user_id=$2 OR to_user_id=$2) AND deleted_at IS NULL AND NOT ($2=ANY(hidden_for)) RETURNING *`,[id,userId,pinned]);
+ const target=(await db.query('SELECT * FROM direct_messages WHERE id=$1 AND (from_user_id=$2 OR to_user_id=$2) AND deleted_at IS NULL AND NOT ($2=ANY(hidden_for))',[id,userId])).rows[0];
+ if(!target)return null;
+ if(pinned&&radioRequest(target.content))await db.query("UPDATE direct_messages SET pinned_at=NULL,updated_at=statement_timestamp() WHERE id<>$1 AND ((from_user_id=$2 AND to_user_id=$3) OR (from_user_id=$3 AND to_user_id=$2)) AND pinned_at IS NOT NULL AND message_type='station'",[id,target.from_user_id,target.to_user_id]);
+ const result=await db.query(`UPDATE direct_messages SET pinned_at=CASE WHEN $3 THEN statement_timestamp() ELSE NULL END,updated_at=statement_timestamp() WHERE id=$1 AND (from_user_id=$2 OR to_user_id=$2) AND deleted_at IS NULL AND NOT ($2=ANY(hidden_for)) RETURNING *`,[id,userId,pinned]);
  return result.rows[0]?shape(result.rows[0]):null;
 }
 export async function pgPinnedChatMessages(userId:string,partnerId:string):Promise<any[]>{
