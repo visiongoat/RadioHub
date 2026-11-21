@@ -158,20 +158,26 @@ interface Client {
 }
 export class StationChatHub {
   private rooms = new Map<string, Set<Client>>();
+  private deliveries = new Map<string, { events: any[]; resync: boolean }>();
   private listener: PoolClient | null = null;
   private listening: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private presenceTimer: ReturnType<typeof setTimeout> | null = null;
+  private presenceFlight: Promise<void> | null = null;
   private ticking = false;
   private tickCount = 0;
   private detach: (() => void) | null = null;
   private send(c: Client, event: object) {
+    this.sendEncoded(c, JSON.stringify(event));
+  }
+  private sendEncoded(c: Client, payload: string) {
     try {
       if (c.ws.readyState !== 1) return;
       if (c.ws.bufferedAmount > 256 * 1024) {
         c.ws.close(1013, "Slow connection");
         return;
       }
-      c.ws.send(JSON.stringify(event));
+      c.ws.send(payload);
     } catch {
       c.ws.close();
     }
@@ -249,6 +255,7 @@ export class StationChatHub {
       if (!room?.size) this.rooms.delete(c.station);
       void db
         .query("DELETE FROM station_chat_sessions WHERE token_hash=$1", [hash])
+        .then(() => this.schedulePresence())
         .catch(() => {});
       if (!this.rooms.size) this.stop();
     };
@@ -278,7 +285,7 @@ export class StationChatHub {
       }
 
       this.send(c, { type: "connected" });
-      await this.presence();
+      this.schedulePresence();
       if (!this.timer) {
         this.timer = setInterval(() => void this.tick(), 15000);
         this.timer.unref();
@@ -289,6 +296,32 @@ export class StationChatHub {
     }
   }
   private async deliver(station: string, event: any) {
+    if (!this.rooms.get(station)?.size) return;
+    const current = this.deliveries.get(station);
+    if (current) {
+      if (current.resync) return;
+      if (current.events.length >= 200) {
+        current.events.length = 0;
+        current.resync = true;
+      } else current.events.push(event);
+      return;
+    }
+    const queue = { events: [event], resync: false };
+    this.deliveries.set(station, queue);
+    try {
+      while (queue.events.length && this.rooms.get(station)?.size) {
+        await this.deliverEvent(station, queue.events.shift());
+        if (queue.resync) {
+          for (const client of this.rooms.get(station) || [])
+            this.send(client, { type: "resync" });
+          break;
+        }
+      }
+    } finally {
+      this.deliveries.delete(station);
+    }
+  }
+  private async deliverEvent(station: string, event: any) {
     const clients = this.rooms.get(station);
     if (!clients?.size) return;
     try {
@@ -310,14 +343,29 @@ export class StationChatHub {
             )
           ).rows.map((r) => r.user_id),
         );
+        const payload = JSON.stringify({ type: "message", message });
         for (const c of clients)
-          if (!blocked.has(c.actor)) this.send(c, { type: "message", message });
-      } else for (const c of clients) this.send(c, event);
+          if (!blocked.has(c.actor)) this.sendEncoded(c, payload);
+      } else {
+        const payload = JSON.stringify(event);
+        for (const c of clients) this.sendEncoded(c, payload);
+      }
     } catch {
       for (const c of clients) this.send(c, { type: "resync" });
     }
   }
+  private schedulePresence() {
+    if (!this.rooms.size || this.presenceTimer) return;
+    // Coalesce bursts: joining one socket must not broadcast all rooms once per join.
+    this.presenceTimer = setTimeout(() => {
+      this.presenceTimer = null;
+      void this.presence().catch(() => {});
+    }, 250);
+    this.presenceTimer.unref();
+  }
   private stop() {
+    if (this.presenceTimer) clearTimeout(this.presenceTimer);
+    this.presenceTimer = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     const client = this.listener;
@@ -330,7 +378,14 @@ export class StationChatHub {
         .catch(() => {})
         .finally(() => client.release());
   }
-  private async presence() {
+  private presence(): Promise<void> {
+    if (this.presenceFlight) return this.presenceFlight;
+    this.presenceFlight = this.broadcastPresence().finally(() => {
+      this.presenceFlight = null;
+    });
+    return this.presenceFlight;
+  }
+  private async broadcastPresence() {
     if (!this.rooms.size) return;
     const rows = (
       await getPostgresPool().query(
@@ -339,9 +394,10 @@ export class StationChatHub {
       )
     ).rows;
     const counts = new Map(rows.map((r) => [r.station_id, r.count]));
-    for (const [id, room] of this.rooms)
-      for (const c of room)
-        this.send(c, { type: "presence", count: counts.get(id) || 0 });
+    for (const [id, room] of this.rooms) {
+      const payload = JSON.stringify({ type: "presence", count: counts.get(id) || 0 });
+      for (const c of room) this.sendEncoded(c, payload);
+    }
   }
   private async tick() {
     if (this.ticking) return;
