@@ -223,3 +223,8 @@ test('decoded listening duration is strictly bounded, usage-consented and forwar
  assert.equal(validateTvDiagnosticBatch({...heartbeat,consent:{diagnostics:true,analytics:false}}),null);
  assert.equal(validateTvDiagnosticBatch({...heartbeat,events:[{...heartbeat.events[0],event:'screen_view'}]}),null);
 });
+
+test('foreground activity heartbeat is accepted without claiming any listening duration',()=>{
+ const value=validateTvDiagnosticBatch({...usage,events:[{event:'activity_heartbeat',code:'none',route:'favorites'}]})!;assert.ok(value);
+ const event=tvGa4Payload(value)!.events[0];assert.equal(event.name,'tv_activity_heartbeat');assert.equal(event.params.engagement_time_msec,1533);assert.equal(event.params.duration_seconds,undefined);assert.equal(event.params.playback_state,undefined);
+});

@@ -4,6 +4,7 @@ const USAGE = new Set([
   "screen_view",
   "playback_start",
   "playback_pause",
+  "activity_heartbeat",
   "listening_heartbeat",
 ]);
 type Environment = {

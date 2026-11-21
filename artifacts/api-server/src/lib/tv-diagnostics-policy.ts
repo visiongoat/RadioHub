@@ -11,6 +11,7 @@ export const TV_EVENTS = [
   "screen_view",
   "playback_start",
   "playback_pause",
+  "activity_heartbeat",
   "listening_heartbeat",
 ] as const;
 export const TV_CODES = [
@@ -59,6 +60,7 @@ const usage = new Set([
   "screen_view",
   "playback_start",
   "playback_pause",
+  "activity_heartbeat",
   "listening_heartbeat",
 ]);
 const semver = /^\d{1,6}\.\d{1,6}\.\d{1,6}$/;
