@@ -58,6 +58,12 @@ describe('PostgreSQL public sitemap and playback diagnostics',{skip:!connectionS
     const response=await fetch(`${base}/api/admin/error-logs?stationId=${stationId}&resolved=false&limit=1`,{headers:{'x-offline-admin':'allowed'}});
     const body=await response.json() as any;assert.equal(response.status,200);assert.equal(body.pagination.total,1);assert.equal(body.errors[0]._id,firstBody.errorId);
   });
+  it('accepts legacy mobile USER_REPORT and persists a valid stream-unavailable diagnostic',async()=>{
+    const stationId=randomUUID();
+    const response=await fetch(`${base}/api/stations/report-error`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...report(stationId),errorType:'USER_REPORT',errorDetails:{userInitiated:true}})});
+    assert.equal(response.status,200);assert.equal((await response.json() as any).success,true);
+    const {errors}=await debug.pgListStationDebugLogs({stationId});assert.equal(errors.length,1);assert.equal(errors[0].errorType,'STREAM_UNAVAILABLE');assert.equal(errors[0].errorDetails.userInitiated,true);
+  });
   it('keeps sitemap XML, conditional requests, mixed public IDs, and gone chunks working without MongoDB',async()=>{
     const {getQualifiedLanguagesState}=await import('../src/seo/qualified-languages');const state=await getQualifiedLanguagesState();assert.ok(state.languages.includes('en'));
     const stationId=randomBytes(12).toString('hex'),genreId='genre-native-pop';

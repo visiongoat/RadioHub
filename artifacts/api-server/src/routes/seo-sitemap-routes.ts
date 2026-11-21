@@ -278,7 +278,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         stationId: stationId || 'unknown',
         stationName: stationName || 'Unknown Station',
         stationUrl: stationUrl || 'unknown',
-        errorType: errorType || 'AUDIO_ERROR',
+        errorType: errorType === 'USER_REPORT' ? 'STREAM_UNAVAILABLE' : errorType || 'AUDIO_ERROR',
         errorMessage: errorMessage || 'Unknown error',
         errorDetails: {
           ...errorDetails,
