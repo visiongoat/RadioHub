@@ -498,6 +498,13 @@
       "idx": 70,
       "tag": "0067_chat_view_once",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "when": 1795265834201,
+      "idx": 71,
+      "tag": "0068_tv_receiver_identity",
+      "breakpoints": true
     }
   ]
 }
