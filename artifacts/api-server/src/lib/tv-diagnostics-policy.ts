@@ -11,6 +11,8 @@ export const TV_EVENTS = [
   "screen_view",
   "playback_start",
   "playback_pause",
+  "activity_heartbeat",
+  "listening_heartbeat",
 ] as const;
 export const TV_CODES = [
   "startup_timeout",
@@ -58,6 +60,8 @@ const usage = new Set([
   "screen_view",
   "playback_start",
   "playback_pause",
+  "activity_heartbeat",
+  "listening_heartbeat",
 ]);
 const semver = /^\d{1,6}\.\d{1,6}\.\d{1,6}$/;
 export function validAppVersion(v: unknown): v is string {
@@ -87,6 +91,7 @@ export type TvDiagnosticEvent = {
   module: string;
   line: number;
   column: number;
+  durationMsec?: number;
 };
 export type TvAnalyticsMetadata = {
   clientId: string;
@@ -141,7 +146,7 @@ export function validateTvDiagnosticBatch(
   for (const e of value.events) {
     if (
       !object(e) ||
-      !keys(e, ["event", "code", "route", "module", "line", "column"]) ||
+      !keys(e, ["event", "code", "route", "module", "line", "column", "durationMsec"]) ||
       !(TV_EVENTS as readonly string[]).includes(e.event) ||
       !(TV_CODES as readonly string[]).includes(e.code) ||
       !(TV_ROUTES as readonly string[]).includes(e.route)
@@ -155,6 +160,9 @@ export function validateTvDiagnosticBatch(
     for (const n of [e.line, e.column])
       if (n !== undefined && (!Number.isInteger(n) || n < 0 || n > 10_000_000))
         return null;
+    if (e.event === "listening_heartbeat"
+      ? !Number.isInteger(e.durationMsec) || e.durationMsec < 1 || e.durationMsec > 120000
+      : e.durationMsec !== undefined) return null;
     events.push({
       event: e.event,
       code: e.code,
@@ -162,6 +170,7 @@ export function validateTvDiagnosticBatch(
       module,
       line: e.line ?? 0,
       column: e.column ?? 0,
+      ...(e.durationMsec !== undefined ? { durationMsec: e.durationMsec } : {}),
     });
   }
   let analytics: TvAnalyticsMetadata | undefined;

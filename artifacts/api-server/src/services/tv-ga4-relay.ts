@@ -4,6 +4,8 @@ const USAGE = new Set([
   "screen_view",
   "playback_start",
   "playback_pause",
+  "activity_heartbeat",
+  "listening_heartbeat",
 ]);
 type Environment = {
   TV_GA4_MEASUREMENT_ID?: string;
@@ -36,6 +38,8 @@ export function tvGa4Payload(batch: TvDiagnosticBatch) {
         engagement_time_msec:
           index === 0 ? batch.analytics!.engagementTimeMsec : 0,
         tv_platform: batch.platform,
+        client_surface: batch.platform === "tizen" ? "samsung_tizen" : "lg_webos",
+        ...(event.event === "listening_heartbeat" ? {duration_seconds: event.durationMsec! / 1000, playback_state: "playing"} : {}),
         tv_app_version: batch.appVersion,
         tv_bundle_version: batch.bundleVersion,
         tv_screen: event.route,
