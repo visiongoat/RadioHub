@@ -84,7 +84,7 @@ export const tvDiagnosticDaily = pgTable('tv_diagnostic_daily', {
   check('tv_diagnostic_daily_platform_check',sql`${t.platform} IN ('tizen','webos')`),
   check('tv_diagnostic_daily_app_version_check',sql`length(${t.appVersion})<=20`),
   check('tv_diagnostic_daily_bundle_version_check',sql`length(${t.bundleVersion})<=64`),
-  check('tv_diagnostic_daily_event_check',sql`${t.event} IN ('startup_ready','startup_error','js_error','promise_error','react_error','catalog_error','playback_error','app_open','screen_view','playback_start','playback_pause')`),
+  check('tv_diagnostic_daily_event_check',sql`${t.event} IN ('startup_ready','startup_error','js_error','promise_error','react_error','catalog_error','playback_error','app_open','screen_view','playback_start','playback_pause','activity_heartbeat','listening_heartbeat')`),
   check('tv_diagnostic_daily_code_check',sql`${t.code} IN ('startup_timeout','asset_load','syntax_error','type_error','reference_error','range_error','security_error','unknown_error','promise_rejected','render_error','http_error','network_error','request_timeout','media_aborted','media_network','media_decode','media_unsupported','playback_failed','none')`),
   check('tv_diagnostic_daily_route_check',sql`${t.route} IN ('discover','search','radio-playing','settings','favorites','login','premium-upgrade','countries','genres','other')`),
   check('tv_diagnostic_daily_module_check',sql`${t.module} IN ('main','audio','startup','vendor','api','unknown')`),
