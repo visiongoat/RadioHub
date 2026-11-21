@@ -212,3 +212,14 @@ test("GA4 client mapping preserves 128 random bits with stable positive decimal 
     assert.equal(recovered, hex);
   }
 });
+
+test('decoded listening duration is strictly bounded, usage-consented and forwarded once to GA4',()=>{
+ const heartbeat={...usage,events:[{event:'listening_heartbeat',code:'none',route:'radio-playing',durationMsec:60500}]};
+ const valid=validateTvDiagnosticBatch(heartbeat)!;assert.ok(valid);
+ const event=tvGa4Payload(valid)!.events[0];
+ assert.equal(event.name,'tv_listening_heartbeat');assert.equal(event.params.duration_seconds,60.5);
+ assert.equal(event.params.playback_state,'playing');assert.equal(event.params.client_surface,'samsung_tizen');
+ for(const durationMsec of [0,-1,120001,1.5,'60000',undefined])assert.equal(validateTvDiagnosticBatch({...heartbeat,events:[{...heartbeat.events[0],durationMsec}]}),null);
+ assert.equal(validateTvDiagnosticBatch({...heartbeat,consent:{diagnostics:true,analytics:false}}),null);
+ assert.equal(validateTvDiagnosticBatch({...heartbeat,events:[{...heartbeat.events[0],event:'screen_view'}]}),null);
+});
