@@ -64,6 +64,8 @@ export function createGoogleTagManager(options: {
   let lastPage: string | null = null;
   let tcfRegistered = false;
   let unsubscribe: (() => void) | undefined;
+  let currentUser: string | null = null;
+  const currentProperties: Record<string, string> = {};
   const disableGoogle = (disabled: boolean) => {
     if (/^G-[A-Z0-9]+$/.test(options.measurementId)) {
       (host as unknown as Record<string, unknown>)[`ga-disable-${options.measurementId}`] = disabled;
@@ -110,6 +112,22 @@ export function createGoogleTagManager(options: {
     } catch { if (started) suspend(); return false; }
   };
   const push = (value: Record<string, unknown>) => host.dataLayer?.push(value);
+  const identify = () => host.gtag?.('config', options.measurementId, {
+    user_id: currentUser, send_page_view: false,
+    client_surface: 'web',
+    ...(Object.keys(currentProperties).length ? { user_properties: { ...currentProperties } } : {}),
+  });
+  const sendEvent = (name: string, params: Record<string, string | number>) => {
+    if (!started || !GOOGLE_EVENTS.has(name) || !allowed()) return;
+    // The published container owns page_view only. Product events go directly
+    // through its Google tag, once, rather than an unconfigured GTM trigger.
+    host.gtag?.('event', name, {
+      ...params, send_to: options.measurementId, client_surface: 'web',
+      page_title: 'MegaRadio',
+      page_location: publicMeasurementUrl(host.location.href, host.location.origin)!,
+      page_referrer: publicMeasurementReferrer(doc.referrer, host.location.origin) || '',
+    });
+  };
   const pageView = () => {
     if (!started || !allowed()) return;
     const page = publicMeasurementUrl(host.location.href, host.location.origin)!;
@@ -127,6 +145,7 @@ export function createGoogleTagManager(options: {
       page_referrer: publicMeasurementReferrer(doc.referrer, host.location.origin) || '' });
     disableGoogle(false);
     host.gtag?.('consent', 'update', { analytics_storage: 'granted' });
+    identify();
     push({ 'gtm.start': Date.now(), event: 'gtm.js' });
     const script = doc.createElement('script');
     script.id = 'megaradio-gtm';
@@ -188,15 +207,22 @@ export function createGoogleTagManager(options: {
         const value=params[key];if(typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=1e9)safe[key]=value;
         else if(typeof value==='string')safe[key]=value.slice(0,100);
       }
-      push({event:'megaradio_event',event_name:name,...safe});
+      sendEvent(name,safe);
     },
-    user:(id:string|null)=>{if(started&&allowed()&&(id===null||/^[a-f0-9]{24}$/i.test(id)))host.gtag?.('config',options.measurementId,{user_id:id,send_page_view:false});},
-    property:(name:string,value:string)=>{if(started&&allowed()&&['current_screen','current_station','playback_state'].includes(name))host.gtag?.('set','user_properties',{[name]:value.slice(0,36)});},
+    user:(id:string|null)=>{
+      if(id!==null&&!/^(?:[a-f0-9]{24}|user_[a-zA-Z0-9_-]{1,90})$/i.test(id))return;
+      currentUser=id;
+      if(started&&allowed())identify();
+    },
+    property:(name:string,value:string)=>{
+      if(!['current_screen','current_station','playback_state'].includes(name))return;
+      currentProperties[name]=value.slice(0,36);
+      if(started&&allowed())host.gtag?.('set','user_properties',{[name]:currentProperties[name]});
+    },
     event: (name: string, value?: number) => {
       // Drop pre-consent events; never queue callbacks with historical payloads.
       if (!started || !GOOGLE_EVENTS.has(name) || !allowed()) return;
-      push({ event: 'megaradio_event', event_name: name,
-        ...(typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1e9 ? { value } : {}) });
+      sendEvent(name, typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1e9 ? { value } : {});
     },
   };
 }

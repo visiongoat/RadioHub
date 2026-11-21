@@ -13,6 +13,7 @@ let consent: ReturnType<typeof createWebAnalyticsConsentStore>;
 const runtimes: ReturnType<typeof createGoogleTagManager>[] = [];
 const scriptCount = () => document.querySelectorAll('script[src*="googletagmanager"]').length;
 const events = (type: string) => (host.dataLayer || []).filter((item: any) => item.event === type);
+const productEvents = () => (host.dataLayer || []).filter((item: any) => item[0] === 'event').map((item: any) => ({name:item[1], params:item[2]}));
 const consentReady = () => expect(consent.set('granted')).toBe(true);
 const safeDefaults = () => host.dataLayer.find((item: any) => item.page_location && !item.event);
 const updates = () => host.dataLayer.filter((item: any) => item[0] === 'consent' && item[1] === 'update').map((item: any) => item[2]);
@@ -75,7 +76,7 @@ it.each([0,1,2,3,4,undefined,5,NaN])('never infers our opt-in from CMP value: %s
   status = value; const runtime = create(); runtime.initialize();
   callbacks.forEach(entry => Object.values(entry).forEach(callback => callback()));
   runtime.pageView(); runtime.event('station_play');
-  expect(scriptCount()).toBe(0); expect(events('megaradio_page_view')).toHaveLength(0); expect(events('megaradio_event')).toHaveLength(0);
+  expect(scriptCount()).toBe(0); expect(events('megaradio_page_view')).toHaveLength(0); expect(productEvents()).toHaveLength(0);
 });
 
 it.each([0,1,2,3,undefined])('accepts only our explicit grant independently of CMP state %s, without granting Ads', value => {
@@ -96,22 +97,22 @@ it('drops pre-consent events and starts with the current page, not the original 
   const runtime = create(); runtime.initialize(); runtime.event('station_play',1);
   window.history.replaceState({}, '', '/tr/istasyon/kral-fm?utm_source=ai#player'); runtime.pageView();
   consentReady();
-  expect(events('megaradio_event')).toHaveLength(0);
+  expect(productEvents()).toHaveLength(0);
   expect(events('megaradio_page_view')).toEqual([{event:'megaradio_page_view',page_location:`${location.origin}/tr/istasyon/kral-fm`,page_referrer:''}]);
 });
 
 it('drops historical search events and payloads until a verified opt-in', () => {
   const runtime = create(); runtime.initialize();
   runtime.event('search',8); runtime.event('station_play',1);
-  expect(events('megaradio_event')).toHaveLength(0);
+  expect(productEvents()).toHaveLength(0);
   consentReady(); runtime.event('search',2);
-  expect(events('megaradio_event')).toEqual([{event:'megaradio_event',event_name:'search',value:2}]);
+  expect(productEvents()).toEqual([expect.objectContaining({name:'search',params:expect.objectContaining({value:2,send_to:'G-TEST12345',client_surface:'web'})})]);
 });
 
 it('can observe a later initial opt-in, but never replays pre-consent events', () => {
   const runtime = create(); runtime.initialize(); runtime.event('station_play',1);
   window.history.replaceState({}, '', '/tr/faq'); consentReady(); runtime.pageView();
-  expect(scriptCount()).toBe(1); expect(events('megaradio_page_view')).toHaveLength(1); expect(events('megaradio_event')).toHaveLength(0);
+  expect(scriptCount()).toBe(1); expect(events('megaradio_page_view')).toHaveLength(1); expect(productEvents()).toHaveLength(0);
 });
 
 it('deduplicates repeated views but counts A to B to A, stripping query and fragment', () => {
@@ -162,13 +163,13 @@ it.each(['cmpuishown','useractioncomplete'])('locks this document when the CMP s
   const runtime = create(); runtime.initialize(); consentReady(); tcf!({eventStatus},true);
   runtime.event('station_play',1); consentReady(); runtime.pageView();
   expect(host['ga-disable-G-TEST12345']).toBe(true); expect(host.__MEGARADIO_GOOGLE_ALLOWED__()).toBe(false);
-  expect(events('megaradio_event')).toHaveLength(0); expect(events('megaradio_page_view')).toHaveLength(1);
+  expect(productEvents()).toHaveLength(0); expect(events('megaradio_page_view')).toHaveLength(1);
 });
 
 it('locks before the privacy panel and cannot reenable in the same document', () => {
   const runtime = create(); runtime.initialize(); consentReady(); runtime.suspend();
   status = 1; consentReady(); runtime.event('station_play',1); runtime.pageView();
-  expect(host['ga-disable-G-TEST12345']).toBe(true); expect(events('megaradio_event')).toHaveLength(0);
+  expect(host['ga-disable-G-TEST12345']).toBe(true); expect(productEvents()).toHaveLength(0);
 });
 
 it('locks on our later denial and cannot resume after a saved regrant', () => {
@@ -176,7 +177,7 @@ it('locks on our later denial and cannot resume after a saved regrant', () => {
   consentReady(); runtime.pageView(); runtime.event('station_play',1);
   expect(host.__MEGARADIO_GOOGLE_ALLOWED__()).toBe(false);
   expect(runtime.isLocked()).toBe(true); expect(scriptCount()).toBe(1);
-  expect(events('megaradio_page_view')).toHaveLength(1); expect(events('megaradio_event')).toHaveLength(0);
+  expect(events('megaradio_page_view')).toHaveLength(1); expect(productEvents()).toHaveLength(0);
   expect(updates()).toEqual([{analytics_storage:'granted'}, {analytics_storage:'denied'}]);
 });
 
@@ -192,7 +193,7 @@ it('ignores CMP analytics getters but locks a loaded tag on a TCF error', () => 
   host.googlefc.getGoogleConsentModeValues = () => {throw new Error('CMP failed');};
   runtime.event('station_play',1);
   expect(host['ga-disable-G-TEST12345']).toBe(false);
-  expect(events('megaradio_event')).toHaveLength(1);
+  expect(productEvents()).toHaveLength(1);
   tcf!({},false);
   expect(host.__MEGARADIO_GOOGLE_ALLOWED__()).toBe(false);
 });
@@ -222,8 +223,8 @@ it('does not start if navigation becomes private before delayed consent', () => 
 it('sends only allowlisted event names and finite bounded numbers', () => {
   const runtime = create(); runtime.initialize(); consentReady();
   runtime.event('search',8); runtime.event('station_play',Infinity); runtime.event('login',1); runtime.event('email@example.com',1);
-  expect(events('megaradio_event')).toEqual([
-    {event:'megaradio_event',event_name:'search',value:8}, {event:'megaradio_event',event_name:'station_play'},
+  expect(productEvents()).toEqual([
+    expect.objectContaining({name:'search',params:expect.objectContaining({value:8})}), expect.objectContaining({name:'station_play'}),
   ]);
 });
 
@@ -340,7 +341,7 @@ it('locks and disables synchronously before a denial write, even when persistenc
   expect(consent.set('denied')).toBe(false);
   expect(atWrite).toEqual({locked:true,disabled:true,consent:'denied',update:{analytics_storage:'denied'},cookies:''});
   runtime.event('station_play',1); runtime.pageView();
-  expect(events('megaradio_event')).toHaveLength(0); expect(events('megaradio_page_view')).toHaveLength(1);
+  expect(productEvents()).toHaveLength(0); expect(events('megaradio_page_view')).toHaveLength(1);
 });
 
 it.each(['G-3X2WGQC0J3', 'G-OTHER999'])('cleans only _ga and the exact configured stream cookie on revocation: %s', measurementId => {
@@ -372,7 +373,7 @@ it.each(['denied', 'remove', 'clear'])('locks on cross-tab %s and never reopens 
   window.dispatchEvent(new StorageEvent('storage', {key:WEB_ANALYTICS_CONSENT_KEY}));
   callbacks.forEach(entry => Object.values(entry).forEach(callback => callback()));
   runtime.pageView(); runtime.event('station_play',1);
-  expect(events('megaradio_page_view')).toHaveLength(1); expect(events('megaradio_event')).toHaveLength(0);
+  expect(events('megaradio_page_view')).toHaveLength(1); expect(productEvents()).toHaveLength(0);
   expect(updates()).toEqual([{analytics_storage:'granted'}, {analytics_storage:'denied'}]);
 });
 
@@ -391,7 +392,7 @@ it.each(['denied', 'clear'])('locks an external %s even if another listener subs
     window.dispatchEvent(new StorageEvent('storage', {key:change === 'clear' ? null : WEB_ANALYTICS_CONSENT_KEY}));
     consentReady(); runtime.pageView(); runtime.event('station_play',1);
     expect(runtime.isLocked()).toBe(true); expect(host.__MEGARADIO_GOOGLE_ALLOWED_VALUE__).toBe(false);
-    expect(events('megaradio_page_view')).toHaveLength(1); expect(events('megaradio_event')).toHaveLength(0);
+    expect(events('megaradio_page_view')).toHaveLength(1); expect(productEvents()).toHaveLength(0);
     expect(scriptCount()).toBe(1);
     expect(updates()).toEqual([{analytics_storage:'granted'}, {analytics_storage:'denied'}]);
   } finally { unsubscribe(); }
@@ -419,7 +420,7 @@ it.each(['decision', 'idle', 'visibility'])('locks an expired opt-in during %s w
     else runtime.event('station_play',1);
   }
   expect(runtime.isLocked()).toBe(true); expect(host['ga-disable-G-TEST12345']).toBe(true);
-  expect(events('megaradio_event')).toHaveLength(0);
+  expect(productEvents()).toHaveLength(0);
   expect(updates()).toEqual([{analytics_storage:'granted'}, {analytics_storage:'denied'}]);
 });
 
@@ -427,7 +428,7 @@ it.each(['malformed', 'future', 'expired'])('never starts from a %s stored grant
   const updatedAt = kind === 'future' ? Date.now() + 60_000 : Date.now() - WEB_ANALYTICS_CONSENT_MAX_AGE_MS;
   localStorage.setItem(WEB_ANALYTICS_CONSENT_KEY, kind === 'malformed' ? '{invalid' : JSON.stringify({version:1,choice:'granted',updatedAt}));
   const runtime = create(); runtime.initialize(); runtime.pageView(); runtime.event('station_play',1);
-  expect(scriptCount()).toBe(0); expect(updates()).toEqual([]); expect(events('megaradio_event')).toHaveLength(0);
+  expect(scriptCount()).toBe(0); expect(updates()).toEqual([]); expect(productEvents()).toHaveLength(0);
 });
 
 it('requires successful opt-in persistence before loading GTM', () => {
@@ -442,7 +443,7 @@ it('fails closed on later storage read errors, without relying on CMP state', ()
   const runtime = create(); runtime.initialize(); consentReady();
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Blocked'); });
   runtime.event('station_play',1);
-  expect(runtime.isLocked()).toBe(true); expect(events('megaradio_event')).toHaveLength(0);
+  expect(runtime.isLocked()).toBe(true); expect(productEvents()).toHaveLength(0);
   expect(updates().at(-1)).toEqual({analytics_storage:'denied'});
 });
 
@@ -466,7 +467,7 @@ it('locks private SPA navigation before an initial grant and never replays event
   window.history.replaceState({}, '', '/tr/profil/ayarlar'); runtime.pageView();
   window.history.replaceState({}, '', '/tr/blog'); consentReady(); runtime.pageView();
   expect(runtime.isLocked()).toBe(true); expect(scriptCount()).toBe(0);
-  expect(events('megaradio_event')).toHaveLength(0);
+  expect(productEvents()).toHaveLength(0);
 });
 
 it('exposes a configurable read-only live boolean getter, preserving the function contract', () => {
@@ -547,5 +548,5 @@ it.each([false, true])('fails closed without loading GTM if getter definition is
   expect((blockedHost as any).dataLayer).toBeUndefined();
   consentReady(); runtime.pageView(); runtime.event('station_play',1);
   expect(scriptCount()).toBe(0); expect(events('gtm.js')).toHaveLength(0);
-  expect(events('megaradio_page_view')).toHaveLength(0); expect(events('megaradio_event')).toHaveLength(0);
+  expect(events('megaradio_page_view')).toHaveLength(0); expect(productEvents()).toHaveLength(0);
 });
