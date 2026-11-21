@@ -21,10 +21,11 @@ export const tvDeviceCodes = pgTable('tv_device_codes', {
   index('tv_device_codes_device_time').on(t.kind,t.deviceId,t.createdAt.desc()), index('tv_device_codes_expiry').on(t.expiresAt),
 ]);
 export const userDevices = pgTable('user_devices', {
+  receiverUuid:text('receiver_uuid'),receiverApplication:text('receiver_application'),
   id: text('id').primaryKey(), userId: owner(), deviceId: text('device_id').notNull(), deviceName: text('device_name').notNull(),
   platform: text('platform').notNull().default('other'), isActive: boolean('is_active').notNull().default(true),
   pairedAt: date('paired_at').notNull().defaultNow(), lastSeenAt: date('last_seen_at').notNull().defaultNow(),
-}, t => [uniqueIndex('user_devices_user_id_device_id_key').on(t.userId,t.deviceId), index('user_devices_owner_seen').on(t.userId,t.isActive,t.lastSeenAt.desc())]);
+}, t => [check('user_devices_receiver_identity_check',sql`(${t.receiverUuid} IS NULL AND ${t.receiverApplication} IS NULL) OR (${t.receiverUuid} IS NOT NULL AND ${t.receiverApplication} IS NOT NULL AND ${t.receiverUuid} ~* '^uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND ${t.receiverApplication} IN ('MgRadioDev.MegaRadioTVAPP','lJoKY533ah.MegaRadioTVAPP'))`),uniqueIndex('user_devices_user_id_device_id_key').on(t.userId,t.deviceId), index('user_devices_owner_seen').on(t.userId,t.isActive,t.lastSeenAt.desc())]);
 export const castSessions = pgTable('cast_sessions', {
   id: text('id').primaryKey(), sessionId: text('session_id').notNull().unique(), pairingCode: text('pairing_code'),
   userId: owner(), mobileDeviceId: text('mobile_device_id'), tvDeviceId: text('tv_device_id'), status: text('status').notNull(),

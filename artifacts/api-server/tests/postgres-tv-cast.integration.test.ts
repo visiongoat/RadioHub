@@ -29,6 +29,19 @@ describe('PostgreSQL TV and cast state',{skip:!connectionString},async()=>{
   async function user(){const id=`tv-user-${randomUUID()}`;await pool.query("INSERT INTO users(id,username,email,full_name) VALUES($1,$1,$2,'TV integration')",[id,`${id}@example.invalid`]);return id;}
   async function pairedDevice(userId:string){const deviceId=randomUUID();const code=await tv.createTvCode('login',deviceId,'tizen');await tv.activateTvLogin(code.code,userId);return deviceId;}
 
+  it('recovers receiver identity only for already-paired accounts without changing TV tokens or profile',async()=>{
+    const a=await user(),b=await user(),stranger=await user(),deviceId=await pairedDevice(a);
+    const code=await tv.createTvCode('login',deviceId,'tizen');await tv.activateTvLogin(code.code,b);
+    const tokens=(await pool.query('SELECT token,user_id FROM auth_tokens ORDER BY token')).rows;
+    const receiver={receiver:'uuid:32dd4d8c-9926-4c28-8ae2-279621fb0642',application:'lJoKY533ah.MegaRadioTVAPP'};
+    await tv.touchTvDevice(b,deviceId,'tizen',receiver);
+    const rows=await tv.listTvDevices(a);assert.equal(rows.find(d=>d.deviceId===deviceId)?.receiverUuid,receiver.receiver);
+    assert.equal(rows.find(d=>d.deviceId===deviceId)?.receiverApplication,receiver.application);
+    await tv.touchTvDevice(stranger,deviceId,'tizen',receiver);assert.equal((await tv.listTvDevices(stranger)).length,0);
+    await tv.touchTvDevice(b,deviceId,'tizen',{...receiver,application:'untrusted.app'});
+    assert.equal((await tv.listTvDevices(a)).find(d=>d.deviceId===deviceId)?.receiverApplication,receiver.application);
+    assert.deepEqual((await pool.query('SELECT token,user_id FROM auth_tokens ORDER BY token')).rows,tokens);
+  });
   it('binds a Premium QR to one account and selected plan atomically',async()=>{
     const owner=await user(),other=await user();
     const code=await tv.createTvCode('subscription',randomUUID(),'tizen',{userId:owner,plan:'premium_yearly'});

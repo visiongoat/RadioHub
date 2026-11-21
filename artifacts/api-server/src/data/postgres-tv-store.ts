@@ -101,16 +101,25 @@ export async function tvSubscriptionToken(codeId: string, deviceId: string): Pro
   });
 }
 export async function listTvDevices(userId: string): Promise<any[]> {
-  return (await getPostgresPool().query(`SELECT own.*,presence.last_seen_at FROM user_devices own
+  return (await getPostgresPool().query(`SELECT own.*,presence.last_seen_at,COALESCE(identity.receiver_uuid,own.receiver_uuid) receiver_uuid,COALESCE(identity.receiver_application,own.receiver_application) receiver_application FROM user_devices own
     CROSS JOIN LATERAL (SELECT MAX(last_seen_at) last_seen_at FROM user_devices
       WHERE device_id=own.device_id AND is_active=true) presence
+    LEFT JOIN LATERAL (SELECT receiver_uuid,receiver_application FROM user_devices
+      WHERE device_id=own.device_id AND is_active=true AND receiver_uuid IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1) identity ON true
     WHERE own.user_id=$1 AND own.is_active=true ORDER BY presence.last_seen_at DESC`, [userId])).rows.map(shape);
 }
 export async function findTvDevice(userId: string, deviceId: string): Promise<any> {
   return shape((await getPostgresPool().query("SELECT * FROM user_devices WHERE user_id=$1 AND device_id=$2 AND is_active=true", [userId,deviceId])).rows[0]);
 }
-export async function touchTvDevice(userId: string, deviceId: string, platform?: string): Promise<void> {
-  await getPostgresPool().query("UPDATE user_devices SET last_seen_at=now(),platform=COALESCE($3,platform) WHERE user_id=$1 AND device_id=$2 AND is_active=true", [userId,deviceId,platform || null]);
+export function tvReceiverIdentity(value:any):{receiver:string;application:string}|null {
+  if(typeof value?.receiver!=='string'||!/^uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.receiver)||!['MgRadioDev.MegaRadioTVAPP','lJoKY533ah.MegaRadioTVAPP'].includes(value.application))return null;
+  return {receiver:value.receiver.toLowerCase(),application:value.application};
+}
+export async function touchTvDevice(userId: string, deviceId: string, platform?: string,receiver?:unknown): Promise<void> {
+  const identity=platform==='tizen'?tvReceiverIdentity(receiver):null;
+  await getPostgresPool().query(`UPDATE user_devices SET last_seen_at=now(),platform=COALESCE($3,platform),
+    receiver_uuid=COALESCE($4,receiver_uuid),receiver_application=COALESCE($5,receiver_application)
+    WHERE user_id=$1 AND device_id=$2 AND is_active=true`, [userId,deviceId,platform || null,identity?.receiver||null,identity?.application||null]);
 }
 export async function unpairTvDevice(userId: string, deviceId: string): Promise<void> {
   await transaction(async (client) => {

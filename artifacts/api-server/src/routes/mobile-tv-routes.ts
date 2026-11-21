@@ -752,7 +752,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
 
       // Update last-seen for this device (non-blocking)
-      void touchTvDevice(userId, deviceId, platform).catch(() => {});
+      void touchTvDevice(userId, deviceId, platform,{receiver:req.query.receiver,application:req.query.application}).catch(() => {});
       const command = await pollCastCommand(userId, deviceId);
 
       if (!command) return void res.json({});
@@ -850,6 +850,8 @@ If you have any questions about this privacy policy or our data practices, pleas
         platform: d.platform,
         lastSeenAt: d.lastSeenAt,
         pairedAt: d.pairedAt,
+        receiver: d.receiverUuid || undefined,
+        application: d.receiverApplication || undefined,
       })) });
     } catch (err: any) {
       logger.error('[cast/devices] error:', err.message);
