@@ -10,7 +10,9 @@ describe("Retained Home room discovery SQL", { skip: !process.env.PG_TEST_DATABA
     f = await createNativePostgresFixture("station_home_retention");
     await f.pool.query(`INSERT INTO stations(id,station_uuid,name,slug,url,country,country_code,is_list_visible) VALUES($1,$1,'DE radio','de-radio','https://radio.test/de','Germany','DE',true)`, [other]);
     await f.pool.query(`INSERT INTO users(id,username,email,full_name,is_public_profile) VALUES($1,'alice','alice@test.test','Alice',true),($2,'bob','bob@test.test','Bob',true)`, [alice,bob]);
+    await f.pool.query(`UPDATE users SET avatar='https://images.test/bob.png',source=jsonb_build_object('profileImageUrl','https://images.test/bob-profile.png') WHERE id=$1`,[bob]);
     await f.pool.query(`INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content) VALUES($1,$2,$3,$4,'Hello Germany')`, ["d".repeat(24),other,bob,randomUUID()]);
+    await f.pool.query(`INSERT INTO station_chat_home_previews(message_id,decision,display_name,reviewed_content) VALUES($1,'approved','Bob','Hello Germany')`,["d".repeat(24)]);
   });
   after(async () => { await f?.close(); });
   afterEach(async () => {
@@ -57,9 +59,15 @@ describe("Retained Home room discovery SQL", { skip: !process.env.PG_TEST_DATABA
       let room=(await activeStationRooms('DE','')).rooms[0];
       assert.equal(room.activeCount,0);assert.equal(room.participantCount,4);
       assert.deepEqual(room.participants.map((p:any)=>p._id),[bob,alice,dave]);
+      assert.equal(room.messages[0].userId,bob);
+      assert.equal(room.messages[0].name,'Bob');
+      assert.equal(room.messages[0].avatar,'https://images.test/bob.png');
+      assert.equal(room.messages[0].profileImageUrl,'https://images.test/bob-profile.png');
+      assert.equal(room.messages[0].content,'Hello Germany');
       await f.pool.query('INSERT INTO station_chat_blocks(user_id,blocked_user_id) VALUES($1,$2)',[alice,bob]);
       room=(await activeStationRooms('DE',alice)).rooms[0];
       assert.equal(room.participantCount,3);assert.deepEqual(room.participants.map((p:any)=>p._id),[alice,dave,carol]);
+      assert.ok(room.messages.every((m:any)=>m.userId!==bob),'blocked authors never appear in Home preview fields');
       await f.pool.query('DELETE FROM station_chat_blocks WHERE user_id=$1',[alice]);
     });
     test("Global diversifies the bounded discovery pool beyond one country's first 128 rooms", async () => {

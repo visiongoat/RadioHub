@@ -404,6 +404,9 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   });
 
   app.get("/api/now-playing/:id", async (req, res) => {
+    // A last known song is not a cacheable document. Native/browser caches
+    // must revalidate against the active upstream observation, including errors.
+    res.set('Cache-Control', 'no-store');
     try {
       const { id } = req.params;
 
@@ -426,7 +429,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         title: metadata.title || '',
         artist: metadata.artist || '',
         station: metadata.station || station.name,
-        genre: metadata.genre || ''
+        genre: metadata.genre || '',
+        observedAt: metadata.observedAt ?? null,
+        titleChangedAt: metadata.titleChangedAt ?? null,
+        metadataSource: metadata.observedAt ? 'stream-icy' : null,
       });
     } catch (error: any) {
       if (error?.message !== 'metadata-unavailable') {

@@ -1,5 +1,6 @@
 import { JWT } from "google-auth-library";
 import { logger } from "../utils/logger";
+import { isAppleSignedTransaction, verifyAppleSignedTransaction } from './apple-signed-transaction';
 
 export type Platform = "ios" | "android" | "tvos" | "macos";
 export type PremiumPlan =
@@ -42,6 +43,7 @@ export interface ValidationSuccess {
   isLifetime: boolean;
   productId: string;
   environment?: "production" | "sandbox";
+  signedDate?: number;
 }
 
 export interface ValidationFailure {
@@ -70,6 +72,7 @@ export async function verifyAppleReceipt(
   receipt: string,
   productId: string
 ): Promise<ValidationResult> {
+  if (isAppleSignedTransaction(receipt)) return verifyAppleSignedTransaction(receipt, productId, LIFETIME_PRODUCT_IDS.has(productId));
   const sharedSecret = process.env.APPLE_IAP_SHARED_SECRET;
   if (!sharedSecret) {
     return { valid: false, error: "Apple shared secret not configured", code: "missing_apple_secret" };

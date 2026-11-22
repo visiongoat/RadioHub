@@ -267,6 +267,10 @@ export function registerIapValidationRoutes(app: Express) {
                                 "subscription.lastVerifiedAt": new Date(),
                                 "subscription.expiresAt": expiresAtDate,
                             };
+                            if (result.signedDate) {
+                                update['subscription.appleSignedProof'] = true;
+                                update['subscription.lastSignedDate'] = new Date(result.signedDate);
+                            }
                             if (isAndroid) {
                                 update["subscription.purchaseToken"] = receipt;
                                 update.$unset = { "subscription.receipt": "" };
@@ -289,6 +293,10 @@ export function registerIapValidationRoutes(app: Express) {
                                 "subscription.lastVerifiedAt": new Date(),
                                 "subscription.expiresAt": expiresAtDate,
                             };
+                            if (result.signedDate) {
+                                sameTxnSet['subscription.appleSignedProof'] = true;
+                                sameTxnSet['subscription.lastSignedDate'] = new Date(result.signedDate);
+                            }
                             const sameTxnUnset: any = {};
                             // Migrate legacy Android records that stored token in `receipt`
                             if (isAndroid && existingSub?.receipt && !existingSub?.purchaseToken) {
@@ -306,6 +314,10 @@ export function registerIapValidationRoutes(app: Express) {
                     }
                 }
                 catch (err: any) {
+                    if (err?.code === 'apple_stale_proof') return finish(409, {
+                        valid:false,error:'A newer Apple subscription state supersedes this transaction',code:'apple_stale_proof',
+                    }, {result:'invalid_receipt',userId:targetUserId,productId:result.productId,
+                        originalTransactionId:result.originalTransactionId,providerCode:'apple_stale_proof',errorMessage:'Newer Apple subscription state supersedes signed proof'});
                     attachError = err?.message || String(err);
                     logger.error("[IAP] Failed to persist subscription:", attachError);
                 }

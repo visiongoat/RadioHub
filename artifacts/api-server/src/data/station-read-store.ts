@@ -27,8 +27,23 @@ const genreSlug = (value: string): string => value.normalize('NFKD').replace(/[\
 
 function fromPostgres(row: Record<string, any> | undefined): any | null {
   if (!row) return null;
+  const source = row.source && typeof row.source === 'object' ? row.source : {};
+  let genres: string[] | undefined;
+  if (Array.isArray(row._catalog_genres)) {
+    const canonical = row._catalog_genres.filter((value: unknown): value is string => typeof value === 'string' && !!value.trim())
+      .map((value: string) => value.trim());
+    const legacy = Array.isArray(source.genres) ? source.genres : typeof source.genres === 'string' ? source.genres.split(/[,;|]/) : [];
+    const seen = new Set<string>();
+    genres = [...canonical, ...legacy].filter((value: unknown): value is string => typeof value === 'string' && !!value.trim())
+      .map((value: string) => value.trim()).filter((value: string) => {
+        const key = value.normalize('NFKC').toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }).slice(0, 20);
+  }
   return {
-    ...(row.source && typeof row.source === "object" ? row.source : {}),
+    ...source,
+    ...(genres ? {genres} : {}),
     _id: row.id, stationuuid: row.station_uuid, changeUuid: row.change_uuid,
     name: row.name, slug: row.slug, slugAliases: row.slug_aliases || [],
     redirectToSlug: row.redirect_to_slug, url: row.url, urlResolved: row.url_resolved,
@@ -59,10 +74,13 @@ async function postgresStation(identifier: string, allowHistoricalRepair = true)
      ), merged AS MATERIALIZED (
        SELECT s.* FROM station_merge_aliases a JOIN stations s ON s.id=a.station_id
        WHERE a.alias=$1 AND NOT EXISTS (SELECT 1 FROM direct)
-     ) SELECT * FROM direct UNION ALL SELECT * FROM merged
+     ), resolved AS MATERIALIZED (SELECT * FROM direct UNION ALL SELECT * FROM merged
      UNION ALL (SELECT * FROM stations
        WHERE NOT EXISTS (SELECT 1 FROM direct) AND NOT EXISTS (SELECT 1 FROM merged)
-       AND $1=ANY(slug_aliases) LIMIT 1)`,
+       AND $1=ANY(slug_aliases) LIMIT 1))
+     SELECT resolved.*,ARRAY(SELECT sg.genre_slug FROM station_genres sg
+       WHERE sg.station_id=resolved.id ORDER BY sg.position,sg.genre_slug LIMIT 20) AS _catalog_genres
+     FROM resolved`,
     [identifier],
   );
   if (result.rows[0]) return fromPostgres(result.rows[0]);

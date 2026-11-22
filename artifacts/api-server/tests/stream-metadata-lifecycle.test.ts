@@ -13,9 +13,28 @@ test('station headers never become songs; real title arrives, then stream end cl
  try{
  const response=service.getStationMetadata({url});await tick();assert.equal(service.getMetadata(url).title,undefined);
  bodies.at(-1)!.write(frame('Artist - Song - Live'));
- assert.deepEqual(await response,{title:'Song - Live',artist:'Artist',station:'Different broadcast identity',genre:'Pop'});
+ const metadata=await response;
+ assert.deepEqual({...metadata,observedAt:undefined,titleChangedAt:undefined},{title:'Song - Live',artist:'Artist',station:'Different broadcast identity',genre:'Pop',observedAt:undefined,titleChangedAt:undefined});
+ assert.ok(metadata.observedAt!>0);assert.ok(metadata.titleChangedAt!>0);
  bodies.at(-1)!.emit('end');assert.equal(service.getMetadata(url).title,undefined);assert.equal(service.getMetadata(url).artist,undefined);
  }finally{service.cleanup();}
+});
+test('REST cache hits do not renew source observation; real activity preserves an unchanged long track',async()=>{
+ const service=new StreamMetadataService(),url='https://fixture.test/freshness';
+ let now=1700000000000;const clock=mock.method(Date,'now',()=>now);
+ try{
+ const initial=service.getStationMetadata({url});await tick();bodies.at(-1)!.write(frame('Artist - Long unchanged track'));
+ const first=await initial;assert.equal(first.observedAt,now);assert.equal(first.titleChangedAt,now);
+ now+=10000;
+ const cached=await service.getStationMetadata({url});
+ assert.equal(cached.observedAt,first.observedAt,'fetch time is not source observation time');
+ assert.equal(cached.titleChangedAt,first.titleChangedAt);
+ now+=3600000;
+ bodies.at(-1)!.write(frame('Artist - Long unchanged track'));await tick();
+ const longTrack=await service.getStationMetadata({url});
+ assert.equal(longTrack.title,'Long unchanged track');assert.equal(longTrack.observedAt,now,'actual transport bytes establish a fresh observation');
+ assert.equal(longTrack.titleChangedAt,first.titleChangedAt,'repeated identical metadata is not a new song');
+ }finally{clock.mock.restore();service.cleanup();}
 });
 test('a silent transport refreshes its cached song, but activity preserves a long unchanged song',async()=>{
  const service=new StreamMetadataService(),url='https://fixture.test/two';

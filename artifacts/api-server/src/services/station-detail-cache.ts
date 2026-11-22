@@ -15,7 +15,7 @@ export function stationDetailIdentifiers(...stations: StationDetailIdentity[]): 
   ]).filter((value): value is string => typeof value === 'string' && value.length > 0))];
 }
 
-export const stationDetailCacheKey = (identifier: string): string => `station:detail:editorial-v2:${identifier}`;
+export const stationDetailCacheKey = (identifier: string): string => `station:detail:editorial-v3-taxonomy:${identifier}`;
 
 // Exact detail keys only; derived lists and other replicas retain their bounded TTL.
 export async function invalidatePublicStationDetails(identifiers: readonly string[]): Promise<void> {

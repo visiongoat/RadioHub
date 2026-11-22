@@ -718,6 +718,10 @@ export function registerMiscRoutes(
         "subscription.expiresAt": expiresAtDate,
       };
       const unsetFields: any = {};
+      if (result.signedDate) {
+        setFields['subscription.appleSignedProof'] = true;
+        setFields['subscription.lastSignedDate'] = new Date(result.signedDate);
+      }
       if (isAndroid) {
         setFields["subscription.purchaseToken"] = credential;
         unsetFields["subscription.receipt"] = "";
@@ -743,6 +747,7 @@ export function registerMiscRoutes(
         ...(result.environment ? { environment: result.environment } : {}),
       });
     } catch (error: any) {
+      if (error?.code === 'apple_stale_proof') return void res.status(409).json({error:'A newer Apple subscription state supersedes this transaction',code:'apple_stale_proof'});
       logger.error(
         "[IAP] /api/user/subscription update error:",
         error?.message || error,
