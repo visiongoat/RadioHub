@@ -43,3 +43,13 @@ test('background recipient gets a stored notification and correct room push; vis
  targets=[];await notifyRoomMentions({...message,_id:'third'});assert.equal(notifications.length,2);
  await notifyRoomMentions({...message,messageType:'gif'});assert.equal(notifications.length,2);
 });
+test('a GIF caption retains the text mention identity and notification without treating the provider slug as text',async()=>{
+ const message={_id:'caption-message',stationId:'metro',userId:'sender',messageType:'gif',content:'klipy:wave',caption:'Hi @user_123',sender:{fullName:'Sahin'}};
+ const hydrated=await hydrateRoomMentions([message]);
+ assert.equal(hydrated[0].mentions[0].fullName,'Yasin');
+ targets=[{id:'recipient'}];viewing=false;
+ const previous=notifications.length;
+ await notifyRoomMentions(message);
+ assert.equal(notifications.length,previous+1);
+ assert.equal(pushes.at(-1)[1].data.messageId,'caption-message');
+});
