@@ -15,7 +15,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import compression from "compression";
 import crypto from "crypto";
-import { rateLimit } from 'express-rate-limit';
+import { apiConnectionSnapshot, createAuthApiLimiter, createGlobalApiLimiter, readApiCapacityConfig } from './lib/api-capacity';
 
 declare module "express-session" {
   interface SessionData {
@@ -76,34 +76,9 @@ function getFrameOptionsHeader(): string | null {
   return 'DENY';
 }
 
-const SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|bingbot|bingpreview|slurp|duckduckbot|baiduspider|yandexbot|applebot)\b/i;
-
-const globalApiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: true,
-  message: { error: 'Too many requests, please try again later.' },
-  skip: (req) => {
-    if (!req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health' || req.path === '/healthz') return true;
-    const ua = req.headers['user-agent'] || '';
-    if (SEARCH_BOT_RE.test(ua)) return true;
-    return false;
-  }
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: true,
-  skipSuccessfulRequests: true,
-  message: { error: 'Too many login attempts, please try again in 15 minutes.' },
-  skip: (req) => {
-    const ua = req.headers['user-agent'] || '';
-    return SEARCH_BOT_RE.test(ua);
-  }
-});
+const apiCapacity = readApiCapacityConfig();
+const globalApiLimiter = createGlobalApiLimiter(apiCapacity);
+const authLimiter = createAuthApiLimiter();
 
 function getHstsHeader(): string {
   if (process.env.HSTS_MAX_AGE) {
@@ -200,6 +175,7 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
+    connections: await apiConnectionSnapshot((app as any)._httpServer, apiCapacity),
     memory: {
       heapUsed: `${heapMB}MB`,
       heapTotal: `${heapTotalMB}MB`,
@@ -548,7 +524,7 @@ app.use(session(sessionConfig));
   (server as any).requestTimeout = 120_000;
   server.maxHeadersCount = 100;
   (server as any).maxRequestsPerSocket = 1000;
-  server.maxConnections = 300;
+  server.maxConnections = apiCapacity.maxConnections;
   (app as any)._httpServer = server;
 
   let isShuttingDown = false;
