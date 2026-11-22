@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import assert from 'node:assert/strict';
 import { after, beforeEach, mock, test } from 'node:test';
 
@@ -29,15 +30,16 @@ beforeEach(() => {
 });
 after(() => mock.restoreAll());
 
-test('home SSR renders the bounded native navigation snapshot without changing its curated names or order', async () => {
+test('home SSR renders the bounded native navigation snapshot with localized names while retaining its canonical order and raw snapshot', async () => {
   const page = await renderer.renderStaticPage('/en', 'https://themegaradio.com');
   assert.equal(calls, 1);
   assert.equal(page.pageData.pageType, 'home');
-  assert.deepEqual(page.pageData.topGenres, links);
+  assert.deepEqual(page.pageData.topGenres, links?.map(genre => ({...genre,name:genreDisplayName(genre,'en')})));
+  assert.equal(links?.[0].name,'Editorial Jazz','the shared navigation cache is never mutated');
   const html = renderer.generateHtmlBody({ pageType: 'home', language: page.language,
     translations: page.translations, additionalData: page.pageData, urlTranslations: page.urlTranslations });
-  assert.match(html, /href="\/en\/genres\/jazz">Editorial Jazz<\/a>/);
-  assert.match(html, /href="\/en\/genres\/rock">Editorial Rock<\/a>/);
+  assert.match(html, /href="\/en\/genres\/jazz">Jazz<\/a>/);
+  assert.match(html, /href="\/en\/genres\/rock">Rock<\/a>/);
   await renderer.renderStaticPage('/en', 'https://themegaradio.com');
   assert.equal(calls, 1, 'A warm page does not request navigation again');
 });

@@ -126,7 +126,7 @@ it('renders one hero H1, H2 catalog sections and H3 genre, station and community
   const rock = screen.getByRole('heading', { level: 3, name: 'Rock' });
   expect(rock).toHaveClass(...genreHeadingClasses.split(' '), ...genreTypographyClasses.split(' '));
   expect(rock.closest('.genre-slide')).toHaveClass('!w-[170px]', '!h-[58px]', 'md:!w-[280px]', 'md:!h-[87px]');
-  expect(screen.getByRole('heading', { level: 3, name: 'Discovery Jazz' }))
+  expect(screen.getByRole('heading', { level: 3, name: 'Jazz' }))
     .toHaveAttribute('class', 'font-bold text-white leading-tight drop-shadow-lg');
   expect(container.querySelector('h4, h5, h6')).toBeNull();
 
@@ -150,7 +150,7 @@ it('keeps recently played, discovery and community viewport/loading placeholders
   expect(sectionHeading('Community Favorites')).toHaveAttribute('class', 'section-header pb-4');
   expect(sectionHeading('Popular Stations')).toHaveAttribute('class', 'section-header pb-4');
   expect(screen.queryByRole('heading', { name: 'Community Listener' })).toBeNull();
-  expect(screen.queryByRole('heading', { name: 'Discovery Jazz' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Jazz' })).toBeNull();
   expect(screen.queryByRole('heading', { name: 'Recent Radio' })).toBeNull();
   expect(container.querySelectorAll('.animate-pulse')).toHaveLength(17);
   expect(container.querySelector('h4, h5, h6')).toBeNull();
@@ -188,7 +188,7 @@ it('preserves discovery H4 defaults and typography at all breakpoints when home 
   const location = memoryLocation({ path: '/en' });
   const tree = (headingLevel?: 3 | 4) => <Router hook={location.hook}><DiscoverableGenreSlider genres={[discoverGenre]} headingLevel={headingLevel} /></Router>;
   const { container, rerender } = render(tree());
-  expect(screen.getByRole('heading', { level: 4, name: discoverGenre.name })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 4, name: 'Jazz' })).toBeInTheDocument();
   const original = container.innerHTML;
   const css = container.querySelector('style')!.textContent!;
   expect(css.match(/\.discoverable-genre-slider :is\(h3, h4\)/g)).toHaveLength(3);
@@ -196,6 +196,6 @@ it('preserves discovery H4 defaults and typography at all breakpoints when home 
   expect(css).toMatch(/@media \(min-width: 640px\)\s*\{\s*\.discoverable-genre-slider :is\(h3, h4\)\s*\{\s*font-size: 24px;/);
   expect(css).toMatch(/@media \(min-width: 1024px\)\s*\{\s*\.discoverable-genre-slider :is\(h3, h4\)\s*\{\s*font-size: 32px;/);
   rerender(tree(3));
-  expect(screen.getByRole('heading', { level: 3, name: discoverGenre.name })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 3, name: 'Jazz' })).toBeInTheDocument();
   expect(container.innerHTML.replaceAll('<h3', '<h4').replaceAll('</h3', '</h4')).toBe(original);
 });

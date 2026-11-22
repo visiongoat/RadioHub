@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import { generateSeoTags, getLanguageFromPath, getRetiredLocaleFromPath, isSafeStationDetailSlug, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, CODE_TO_COUNTRY, SEO_LANGUAGES, MAX_GENRE_DIRECTORY_PAGE, generateLocalizedStationTitle, truncateAtWordBoundary, normalizeSeoTitle, LOCALIZED_FLAG_WORD, getStationCountryName, getStationCountryQuery } from '@workspace/seo-shared/seo-config';
 import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
 import { isStationDirectoryPath, isStationDirectoryData, type StationDirectoryData } from '@workspace/seo-shared/station-directory';
@@ -821,7 +822,7 @@ export class SeoRenderer {
         } else {
         const requestedSlug = pathParts[2];
         additionalData.genreSlug = requestedSlug;
-        additionalData.genreName = requestedSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        additionalData.genreName = genreDisplayName({ slug: requestedSlug, name: requestedSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }, language);
 
         // Task #104: gate the /genres/:slug surface against the genre whitelist.
         //   1. If the slug is on the whitelist → render normally (may still be
@@ -1381,7 +1382,7 @@ export class SeoRenderer {
       })(), (async () => {
       // Optional names/links refresh independently of first paint. The API and
       // all actual station lists retain their strict health-aware 60s caches.
-      additionalData.topGenres = getHomeGenreNavigation();
+      additionalData.topGenres = getHomeGenreNavigation()?.map(genre => ({ ...genre, name: genreDisplayName(genre, language) }));
       })()]);
     }
     
@@ -1944,7 +1945,7 @@ export class SeoRenderer {
       // language; otherwise we fall back to the natural per-language template.
       // Without this, every non-English language showed English title fragments
       // ("Pop Radio Stations") and a fully-English description.
-      const genreSeo = buildGenreSeo(additionalData.genreName, language, translations);
+      const genreSeo = buildGenreSeo(genreDisplayName({ slug: additionalData.genreSlug, name: additionalData.genreName }, language), language, translations);
       baseSeoTags.title = genreSeo.title;
       baseSeoTags.description = genreSeo.description;
       baseSeoTags.keywords = genreSeo.keywords;
@@ -2399,7 +2400,7 @@ export class SeoRenderer {
         if (additionalData?.genreName) {
           // Use multilingual helper so TR/DE/ES/etc. don't show English "Radio Stations"
           // when the legacy DB keys are missing (which is the current production state).
-          const genreSeo = buildGenreSeo(additionalData.genreName, language, translations);
+          const genreSeo = buildGenreSeo(genreDisplayName({ slug: additionalData.genreSlug, name: additionalData.genreName }, language), language, translations);
           // H1 = bare genreSeo.h1 (no " | Mega Radio" suffix) — title in
           // genre-seo-templates.ts already carries the brand suffix.
           return genreSeo.h1;
@@ -2901,7 +2902,7 @@ export class SeoRenderer {
       
       case 'genres':
         {
-          const genreName = additionalData?.genreName || '';
+          const genreName = additionalData?.genreName ? genreDisplayName({ slug: additionalData.genreSlug, name: additionalData.genreName }, language) : '';
           const langPrefix = `/${language}`;
           if (!genreName) {
             const hub = buildDirectoryIndexSeo('genres', language, translations);
@@ -2911,7 +2912,7 @@ export class SeoRenderer {
               <p>${this.escapeHtml(hub.description)}</p>
               <ul class="genre-directory">
                 ${(additionalData?.directoryGenres || []).map((genre: { slug: string; name: string }) =>
-                  `<li><a href="${this.escapeHtml(`${genresPath}/${encodeURIComponent(genre.slug)}`)}">${this.escapeHtml(genre.name)}</a></li>`).join('')}
+                  `<li><a href="${this.escapeHtml(`${genresPath}/${encodeURIComponent(genre.slug)}`)}">${this.escapeHtml(genreDisplayName(genre, language))}</a></li>`).join('')}
               </ul>
             </main>`;
             break;
@@ -3620,7 +3621,7 @@ export class SeoRenderer {
         name: buildDirectoryIndexSeo('genres', language, translations).h1,
         numberOfItems: additionalData.directoryGenres.length,
         itemListElement: additionalData.directoryGenres.map((genre: { slug: string; name: string }, index: number) => ({
-          '@type': 'ListItem', position: index + 1, name: genre.name,
+          '@type': 'ListItem', position: index + 1, name: genreDisplayName(genre, language),
           url: `${baseDomain}${genresPath}/${encodeURIComponent(genre.slug)}`,
         })),
       };

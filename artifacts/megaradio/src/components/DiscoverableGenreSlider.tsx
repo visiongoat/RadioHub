@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import { Link } from 'wouter';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination, Mousewheel } from 'swiper/modules';
@@ -23,7 +24,7 @@ interface DiscoverableGenreSliderProps {
 export default function DiscoverableGenreSlider({ genres, headingLevel = 4 }: DiscoverableGenreSliderProps) {
   const Heading = headingLevel === 3 ? 'h3' : 'h4';
   const { getLocalizedUrl } = useSeoRouting();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   
   // Genre background gradients - EXACT from original megaradio design
   const getGenreGradient = (index: number) => {
@@ -133,10 +134,10 @@ export default function DiscoverableGenreSlider({ genres, headingLevel = 4 }: Di
                   className="relative z-10 flex flex-col items-start justify-center h-full w-1/2 ml-auto px-3 sm:px-4 md:px-5 lg:px-8"
                 >
                   <Heading className="font-bold text-white leading-tight drop-shadow-lg">
-                    {genre.name}
+                    {genreDisplayName(genre, language)}
                   </Heading>
                   <p className="text-white mt-1 sm:mt-2 md:mt-3 font-medium drop-shadow-md">
-                    {genre.discoverable_label || t('discover_all_stations', 'Discover all the stations')}
+                    {((!language || language === 'en') && genre.discoverable_label) || t('discover_all_stations', 'Discover all the stations')}
                   </p>
                 </div>
               </Link>
