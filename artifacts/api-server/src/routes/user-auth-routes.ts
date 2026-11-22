@@ -1,3 +1,4 @@
+import { registerFacebookAuthRoutes } from './facebook-auth-routes';
 import {publishStoredNotification} from '../services/notification-events';
 import {googleIdentity, canLinkGoogleAccount} from '../auth/google-identity-policy';
 import { pgListeningTotalMinutes } from '../data/postgres-listening-store';
@@ -512,21 +513,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             res.status(500).json({ error: 'Authentication setup error' });
         }
     });
-    app.get("/api/auth/facebook", (req, res) => {
-        const { getSocialAuthStatus } = deps;
-        const status = getSocialAuthStatus();
-        if (!status.facebook) {
-            return void res.status(501).json({
-                error: 'Facebook authentication not configured',
-                message: 'Social login with Facebook requires API keys to be configured.'
-            });
-        }
-        // TODO: Implement Facebook OAuth when credentials are provided
-        res.status(501).json({
-            error: 'Facebook authentication not implemented',
-            message: 'Facebook OAuth flow will be implemented when Facebook credentials are provided.'
-        });
-    });
+    registerFacebookAuthRoutes(app, { generateAuthToken });
     app.get("/api/auth/apple", async (req, res) => {
         const { getSocialAuthStatus } = deps;
         const status = getSocialAuthStatus();
@@ -647,15 +634,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 });
             }
         })(req, res, next);
-    });
-    app.get("/api/auth/facebook/callback", async (req, res) => {
-        try {
-            res.redirect('/?error=facebook_auth_not_implemented');
-        }
-        catch (error) {
-            console.error('Facebook OAuth callback error:', error);
-            res.redirect('/?error=facebook_auth_failed');
-        }
     });
     app.post("/api/auth/apple/callback", async (req, res) => {
         const frontendBase = process.env.FRONTEND_URL || '';
