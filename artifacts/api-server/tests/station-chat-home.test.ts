@@ -49,6 +49,19 @@ describe("Retained Home room discovery SQL", { skip: !process.env.PG_TEST_DATABA
       await visible(false);
       await f.pool.query("DELETE FROM stations WHERE id=$1", [quiet]);
     });
+    test("retained author avatars survive presence, deduplicate and replace by latest message", async()=>{
+      const {activeStationRooms}=await import("../src/services/station-chat-home");
+      const carol="3".repeat(24),dave="4".repeat(24);
+      await f.pool.query(`INSERT INTO users(id,username,email,full_name,is_public_profile) VALUES($1,'carol','carol@test.test','Carol',true),($2,'dave','dave@test.test','Dave',true)`,[carol,dave]);
+      for(const [i,user] of [alice,carol,dave,alice].entries())await f.pool.query(`INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,created_at) VALUES($1,$2,$3,$4,'Chat participant',now()-($5::int*interval '1 minute'))`,[randomUUID(),other,user,randomUUID(),10-i]);
+      let room=(await activeStationRooms('DE','')).rooms[0];
+      assert.equal(room.activeCount,0);assert.equal(room.participantCount,4);
+      assert.deepEqual(room.participants.map((p:any)=>p._id),[bob,alice,dave]);
+      await f.pool.query('INSERT INTO station_chat_blocks(user_id,blocked_user_id) VALUES($1,$2)',[alice,bob]);
+      room=(await activeStationRooms('DE',alice)).rooms[0];
+      assert.equal(room.participantCount,3);assert.deepEqual(room.participants.map((p:any)=>p._id),[alice,dave,carol]);
+      await f.pool.query('DELETE FROM station_chat_blocks WHERE user_id=$1',[alice]);
+    });
     test("Global diversifies the bounded discovery pool beyond one country's first 128 rooms", async () => {
       const { activeStationRooms } = await import("../src/services/station-chat-home");
       await f.pool.query(`INSERT INTO stations(id,station_uuid,name,slug,url,country,country_code,is_list_visible)
@@ -59,7 +72,7 @@ describe("Retained Home room discovery SQL", { skip: !process.env.PG_TEST_DATABA
       assert.equal(global.length, 32);
       assert.ok(global.some(room => room.station.countryCode === "TR"), "a busy country cannot consume the whole 128-room candidate pool");
       assert.ok(global.some(room => room.station.countryCode === "DE"));
-      assert.ok(global.every(room => room.participants.length === 0 || room.station.countryCode === "DE"));
+      assert.ok(global.every(room => room.participants.length >= 1 && room.participants.length <= 3), "retained public authors remain after all sessions leave");
       const france = (await activeStationRooms("France", "")).rooms;
       assert.equal(france.length, 32);
       assert.ok(france.every(room => room.station.countryCode === "FR" && room.count === 0));

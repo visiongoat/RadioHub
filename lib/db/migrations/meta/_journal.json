@@ -533,6 +533,13 @@
       "when": 1795348800000,
       "tag": "0072_recommendation_pool_order",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795352400000,
+      "tag": "0073_station_chat_gif_caption",
+      "breakpoints": true
     }
   ]
 }

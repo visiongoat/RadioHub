@@ -43,9 +43,10 @@ export function roomContent(body: any) {
   const content = roomText(body?.content);
   if (messageType === "gif" && !/^klipy:[a-zA-Z0-9_-]{1,200}$/.test(content))
     throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
-  return { content, messageType };
+  const caption = messageType === "gif" && body?.caption ? roomText(body.caption) : "";
+  return { content, messageType, ...(caption ? { caption } : {}) };
 }
-export const messageSQL = `SELECT m.id AS "_id",m.station_id AS "stationId",m.user_id AS "userId",m.content,m.message_type AS "messageType",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl','canOpenProfile',u.is_public_profile) AS sender FROM station_chat_messages m JOIN users u ON u.id=m.user_id`;
+export const messageSQL = `SELECT m.id AS "_id",m.station_id AS "stationId",m.user_id AS "userId",m.content,m.caption,m.message_type AS "messageType",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl','canOpenProfile',u.is_public_profile,'isPremium',EXISTS(SELECT 1 FROM subscriptions subscription WHERE subscription.user_id=u.id AND subscription.is_active=true AND (subscription.plan='premium_lifetime' OR (subscription.plan IN ('premium_monthly','premium_quarterly','premium_yearly') AND subscription.expires_at>now())))) AS sender FROM station_chat_messages m JOIN users u ON u.id=m.user_id`;
 export async function roomPage(
   station: string,
   actor: string,
@@ -65,7 +66,7 @@ export async function sendRoomMessage(
   actor: string,
   body: any,
 ) {
-  const { content, messageType } = roomContent(body),
+  const { content, messageType, caption = "" } = roomContent(body),
     clientId = body?.clientId;
   if (
     typeof clientId !== "string" ||
@@ -89,7 +90,8 @@ export async function sendRoomMessage(
       if (
         duplicate.stationId !== station ||
         duplicate.content !== content ||
-        duplicate.messageType !== messageType
+        duplicate.messageType !== messageType ||
+        duplicate.caption !== caption
       )
         throw Object.assign(Error("INVALID_MESSAGE"), { status: 400 });
       await db.query("COMMIT");
@@ -113,8 +115,8 @@ export async function sendRoomMessage(
       throw Object.assign(Error("SLOW_DOWN"), { status: 429 });
     const id = randomBytes(12).toString("hex");
     await db.query(
-      "INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,message_type) VALUES($1,$2,$3,$4,$5,$6)",
-      [id, station, actor, clientId, content, messageType],
+      "INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,message_type,caption) VALUES($1,$2,$3,$4,$5,$6,$7)",
+      [id, station, actor, clientId, content, messageType, caption],
     );
     const message = (await db.query(messageSQL + " WHERE m.id=$1", [id]))
       .rows[0];

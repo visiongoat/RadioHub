@@ -95,6 +95,22 @@ describe('PostgreSQL community identity, privacy and favorite activity', { skip:
     assert.equal((await engagement.pgSearchPublicProfiles('username',1)).length,1);
   });
 
+  it('discovery alternates favorite-rich and new profiles with stable non-overlapping pages and live privacy', async()=>{
+    await pool.query("UPDATE users SET created_at=now() WHERE id='empty'");
+    const {getCommunityDiscovery}=await import('../src/services/community-discovery');
+    const first=await getCommunityDiscovery(2,1),again=await getCommunityDiscovery(2,1),second=await getCommunityDiscovery(2,2);
+    assert.deepEqual(first.data.map(p=>p._id),['older-many','empty']);
+    assert.deepEqual(first.data.map(p=>p._id),again.data.map(p=>p._id));
+    assert.ok(first.pagination.hasMore);
+    assert.ok(second.data.every(p=>!first.data.some(q=>q._id===p._id)));
+    assert.ok([...first.data,...second.data].every(p=>p.email===undefined&&p.source===undefined));
+    await pool.query("UPDATE users SET is_public_profile=false WHERE id='older-many'");
+    assert.ok(!(await getCommunityDiscovery(2,1)).data.some(p=>p._id==='older-many'));
+    assert.equal((await getCommunityDiscovery(24,100)).pagination.hasMore,false);
+    const search1=await engagement.pgSearchPublicProfiles('username',2,1,1),search2=await engagement.pgSearchPublicProfiles('username',2,2,1);
+    assert.ok(search1.length&&search2.length);assert.notEqual(search1[0]._id,search2[0]._id);
+  });
+
   it('returns real public names and canonical/legacy avatars with compatible numeric count aliases, never email', async () => {
     const profiles = await engagement.pgPopularProfiles(20);
     const current = profiles.find(profile => profile._id === 'a-recent')!;

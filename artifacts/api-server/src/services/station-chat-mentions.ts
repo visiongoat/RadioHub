@@ -3,6 +3,7 @@ import {pgCreateNotification} from '../data/postgres-notification-store';
 import CacheManager from '../cache';
 import {isLegacyGeneratedHandle} from '../utils/user-handle';
 
+const mentionText=(message:any)=>message.messageType==='gif'?message.caption||'':message.content||'';
 export function mentionedUsernames(content:string):string[]{
  const names:string[]=[];
  for(const match of content.slice(0,400).matchAll(/(?:^|[^\p{L}\p{N}_.@-])@([\p{L}\p{N}_.-]{1,40})(?![\p{L}\p{N}_.-])/gu)){
@@ -12,7 +13,7 @@ export function mentionedUsernames(content:string):string[]{
 }
 /** One bounded identity read per history page, including people no longer connected. */
 export async function hydrateRoomMentions(messages:any[]):Promise<any[]>{
- const names=[...new Set(messages.flatMap(message=>mentionedUsernames(message.content||'')))].slice(0,200);
+ const names=[...new Set(messages.flatMap(message=>mentionedUsernames(mentionText(message))))].slice(0,200);
  if(!names.length)return messages;
  const stations=[...new Set(messages.map(message=>message.stationId).filter(Boolean))];
  const {rows}=await getPostgresPool().query(`SELECT id AS "_id",username,full_name AS "fullName",avatar,source->>'profileImageUrl' AS "profileImageUrl",is_public_profile AS "canOpenProfile" FROM users WHERE lower(username)=ANY($1::text[]) AND status='active' AND EXISTS(SELECT 1 FROM station_chat_messages m WHERE m.user_id=users.id AND m.station_id=ANY($2::text[]))`,[names,stations]);
@@ -25,12 +26,11 @@ export async function hydrateRoomMentions(messages:any[]):Promise<any[]>{
    for(const alias of safe.usernameAliases)if(missingLegacy.includes(alias)&&!byName.has(alias))byName.set(alias,safe);
   }
  }
- return messages.map(message=>({...message,mentions:mentionedUsernames(message.content||'').flatMap(name=>byName.has(name)?[byName.get(name)]:[])}));
+ return messages.map(message=>({...message,mentions:mentionedUsernames(mentionText(message)).flatMap(name=>byName.has(name)?[byName.get(name)]:[])}));
 }
 /** Called only for a newly committed message, never an idempotent retry. */
 export async function notifyRoomMentions(message:any):Promise<void>{
- if(message.messageType==='gif')return;
- const names=mentionedUsernames(message.content||'');if(!names.length)return;
+ const names=mentionedUsernames(mentionText(message));if(!names.length)return;
  const db=getPostgresPool();
  const targetSQL=`SELECT u.id,u.username FROM users u WHERE lower(u.username)=ANY($1::text[]) AND u.id<>$2 AND u.status='active'
   AND EXISTS(SELECT 1 FROM station_chat_messages m WHERE m.station_id=$3 AND m.user_id=u.id AND m.created_at>now()-interval '24 hours')

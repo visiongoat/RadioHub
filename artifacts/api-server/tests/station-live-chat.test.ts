@@ -34,7 +34,10 @@ test("room input preserves Unicode/emoji, rejects links, control-only, oversized
     roomContent({ content: "klipy:hello-world", messageType: "gif" }),
     { content: "klipy:hello-world", messageType: "gif" },
   );
+  assert.deepEqual(roomContent({content:"klipy:wave",messageType:"gif",caption:"Selam 👋"}),{content:"klipy:wave",messageType:"gif",caption:"Selam 👋"});
   for (const body of [
+    {content:"klipy:wave",messageType:"gif",caption:"https://spam.test"},
+    {content:"klipy:wave",messageType:"gif",caption:"a".repeat(401)},
     { content: "https://other.test/x.gif", messageType: "gif" },
     { content: "not-provider-reference", messageType: "gif" },
     { content: "hello", messageType: "photo" },
@@ -76,6 +79,13 @@ describe(
           clientId: id,
         });
       assert.equal(message.sender.fullName, "Alice");
+      assert.equal(message.sender.isPremium,false);
+      await f.pool.query("INSERT INTO subscriptions(user_id,plan,is_active,expires_at) VALUES($1,'premium_quarterly',true,now()+interval '1 day')",[alice]);
+      assert.equal((await runtime.roomPage(station,alice)).messages[0].sender.isPremium,true);
+      await f.pool.query("UPDATE subscriptions SET expires_at=now()-interval '1 second' WHERE user_id=$1",[alice]);
+      assert.equal((await runtime.roomPage(station,alice)).messages[0].sender.isPremium,false);
+      await f.pool.query("UPDATE subscriptions SET plan='remove_ads',expires_at=now()+interval '1 day' WHERE user_id=$1",[alice]);
+      assert.equal((await runtime.roomPage(station,alice)).messages[0].sender.isPremium,false);
       assert.equal(
         (
           await runtime.sendRoomMessage(station, alice, {
@@ -138,9 +148,11 @@ describe(
         [alice],
       );
       const clientId = randomUUID(),
-        body = { content: "klipy:hello-wave", messageType: "gif", clientId };
+        body = { content: "klipy:hello-wave", caption: "Birlikte dinleyelim 👋", messageType: "gif", clientId };
       const gif = await runtime.sendRoomMessage(station, alice, body);
       assert.equal(gif.messageType, "gif");
+      assert.equal(gif.caption, "Birlikte dinleyelim 👋");
+      await assert.rejects(() => runtime.sendRoomMessage(station,alice,{...body,caption:"Another draft"}), (e:any)=>e.status===400);
       assert.equal(
         (await runtime.sendRoomMessage(station, alice, body))._id,
         gif._id,

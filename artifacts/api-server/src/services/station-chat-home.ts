@@ -100,19 +100,24 @@ export async function activeStationRooms(country: string, actor: string) {
    ORDER BY array_position($4::text[],s.id) LIMIT 32
  )
  SELECT jsonb_build_object('_id',s.id,'name',s.name,'country',s.country,'countryCode',s.country_code,'state',s.state,'city',s.city,'language',s.language,'languagecodes',s.language_codes,'tags',s.tags_raw,'url',s.url,'urlResolved',s.url_resolved,'favicon',s.favicon,'logoAssets',s.logo_assets,'hasLogo',s.has_logo) AS station,
- s.count,COALESCE(people.items,'[]'::jsonb) AS participants,COALESCE(preview.items,'[]'::jsonb) AS messages
+ s.count,s.count AS "activeCount",COALESCE(people.total,0) AS "participantCount",COALESCE(people.items,'[]'::jsonb) AS participants,COALESCE(preview.items,'[]'::jsonb) AS messages
  FROM rooms s
  LEFT JOIN LATERAL (
-   SELECT jsonb_agg(p) AS items FROM (
+   SELECT jsonb_agg(to_jsonb(p)-'total'-'latest' ORDER BY p.latest DESC,p."_id") AS items,max(p.total)::int AS total FROM (
      SELECT u.id AS "_id",u.avatar,u.source->>'profileImageUrl' AS "profileImageUrl",
        (f.following_id IS NOT NULL) AS "isFollowed",
-       CASE WHEN f.following_id IS NOT NULL THEN COALESCE(NULLIF(btrim(u.full_name),''),u.username) END AS "displayName"
-     FROM users u JOIN (SELECT user_id,max(expires_at) AS expires FROM station_chat_sessions WHERE station_id=s.id AND connected AND expires_at>now() AND user_id IS NOT NULL GROUP BY user_id) a ON a.user_id=u.id
+       CASE WHEN f.following_id IS NOT NULL THEN COALESCE(NULLIF(btrim(u.full_name),''),u.username) END AS "displayName",
+       a.latest,count(*) OVER() AS total
+     FROM users u JOIN (
+       SELECT m.user_id,max(m.created_at) AS latest FROM station_chat_messages m
+       WHERE m.station_id=s.id AND ${retainedMessageSql("m")} GROUP BY m.user_id
+     ) a ON a.user_id=u.id
      LEFT JOIN user_follows f ON f.follower_id=$2 AND f.following_id=u.id
      WHERE u.is_public_profile AND COALESCE(u.status,'active') NOT IN ('inactive','suspended','banned','deleted')
      AND NOT EXISTS(SELECT 1 FROM station_chat_blocks b WHERE (b.user_id=$2 AND b.blocked_user_id=u.id) OR (b.user_id=u.id AND b.blocked_user_id=$2))
      AND NOT EXISTS(SELECT 1 FROM direct_chat_blocks b WHERE (b.user_id=$2 AND b.blocked_user_id=u.id) OR (b.user_id=u.id AND b.blocked_user_id=$2))
-     AND NOT EXISTS(SELECT 1 FROM station_chat_sanctions n WHERE n.user_id=u.id AND n.expires_at>now()) ORDER BY (f.following_id IS NOT NULL) DESC,a.expires DESC,u.id LIMIT 8
+     AND NOT EXISTS(SELECT 1 FROM station_chat_sanctions n WHERE n.user_id=u.id AND n.expires_at>now())
+     ORDER BY a.latest DESC,u.id LIMIT 3
    ) p
  ) people ON true
  LEFT JOIN LATERAL (
