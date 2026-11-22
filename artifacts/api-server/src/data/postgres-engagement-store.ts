@@ -4,6 +4,8 @@ import { getPostgresPool } from "../postgres-runtime";
 import { stationVisibilityFields } from '../utils/station-visibility';
 import { lockStationIdentity, resolveStationId, resolveStationIds } from './station-identity-store';
 import { publicUserIdentity } from '../utils/public-user-identity';
+import { normalizePublicUserSearch } from '../utils/user-handle';
+import { resolveLegacyUserHandle } from './user-handle-store';
 
 const pool = () => getPostgresPool();
 
@@ -38,7 +40,7 @@ export async function pgResolveUserId(value: string): Promise<string | null> {
     "SELECT id FROM users WHERE id=$1 OR slug=$1 OR username=$1 LIMIT 1",
     [value],
   );
-  return result.rows[0]?.id ?? null;
+  return result.rows[0]?.id ?? await resolveLegacyUserHandle(value);
 }
 
 /** Recheck privacy before serving cached public profile data; revision isolates prior edits. */
@@ -48,6 +50,10 @@ export async function pgPublicProfileCacheIdentity(value: string): Promise<strin
      WHERE (id=$1 OR slug=$1 OR username=$1) AND is_public_profile=true AND status='active' LIMIT 1`, [value],
   );
   const row = result.rows[0];
+  if (!row) {
+    const legacyId = await resolveLegacyUserHandle(value);
+    return legacyId ? pgPublicProfileCacheIdentity(legacyId) : null;
+  }
   return row ? `${row.id}:${row.revision}` : null;
 }
 
@@ -62,7 +68,10 @@ export async function pgPublicProfile(value: string, currentUserId?: string): Pr
     [value, currentUserId || ""],
   );
   const user = result.rows[0];
-  if (!user) return null;
+  if (!user) {
+    const legacyId = await resolveLegacyUserHandle(value);
+    return legacyId ? pgPublicProfile(legacyId, currentUserId) : null;
+  }
   const favorites = await pool().query<{ tags_raw: string | null; country: string | null }>(
     `SELECT s.tags_raw, s.country FROM user_favorites f
      JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))`,
@@ -461,6 +470,10 @@ export async function pgRecentlyPlayed(value: string, limit: number): Promise<an
     [value],
   );
   const recent = result.rows[0]?.source?.recentlyPlayedStations;
+  if (!result.rows[0]) {
+    const legacyId = await resolveLegacyUserHandle(value);
+    return legacyId ? pgRecentlyPlayed(legacyId, limit) : [];
+  }
   if (!Array.isArray(recent) || !recent.length) return [];
   const ids = recent.map((entry: any) => String(entry?.stationId || entry));
   const eligible = await pool().query('SELECT id FROM stations WHERE id=ANY($1::text[]) AND (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))', [ids]);
@@ -522,11 +535,15 @@ export async function pgAddRecentlyPlayed(userId: string, stationId: string): Pr
 
 /** Search the public directory independently of favorites/ranking caches, including brand-new accounts. */
 export async function pgSearchPublicProfiles(search: string, requestedLimit = 50): Promise<any[]> {
-  const term = search.trim().slice(0,100).toLocaleLowerCase('en').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i').replace(/\s+/g,' ');
+  const term = normalizePublicUserSearch(search);
   if (term.length < 2) return [];
   const limit = Math.max(1,Math.min(100,Math.trunc(Number(requestedLimit))||50));
   // Literal substring matching avoids wildcard expansion and never scans a client-truncated top-100 cohort.
   const pattern='%'+term.replace(/[\\%_]/g,'\\$&')+'%';
+  // All name tokens must match, regardless of given/family-name order. Keep
+  // punctuation in handle matching literal (including underscore and percent).
+  const nameTokens = term.split(/[\s_.-]+/).filter(Boolean).slice(0, 10);
+  const namePatterns = nameTokens.map(token => '%'+token.replace(/[\\%_]/g,'\\$&')+'%');
   const {rows} = await pool().query(`WITH matches AS (
     SELECT u.id AS _id,u.full_name AS "fullName",u.username,u.slug,u.avatar,
       u.source->>'profileImageUrl' AS "profileImageUrl",u.created_at AS "createdAt",
@@ -536,8 +553,8 @@ export async function pgSearchPublicProfiles(search: string, requestedLimit = 50
   ) SELECT _id,"fullName",username,slug,avatar,"profileImageUrl","createdAt",
     (SELECT count(*)::int FROM user_favorites f JOIN stations s ON s.id=f.station_id WHERE f.user_id=matches._id
       AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))) AS "favoriteCount" FROM matches
-    WHERE full_key LIKE $1 OR user_key LIKE $1
+    WHERE full_key LIKE $1 OR user_key LIKE $1 OR (cardinality($4::text[])>1 AND full_key LIKE ALL($4::text[]))
     ORDER BY CASE WHEN user_key=$2 OR full_key=$2 THEN 0 WHEN starts_with(full_key,$2) OR starts_with(user_key,$2) THEN 1 ELSE 2 END,"createdAt" DESC NULLS LAST,_id
-    LIMIT $3`,[pattern,term,limit]);
+    LIMIT $3`,[pattern,term,limit,namePatterns]);
   return rows.map(row=>({...row,...publicUserIdentity(row),id:row._id,favorites_count:row.favoriteCount,favoriteStationsCount:row.favoriteCount}));
 }
