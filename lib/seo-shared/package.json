@@ -43,6 +43,7 @@
     "./url-translations": "./src/url-translations.ts",
     "./country-name-translations": "./src/country-name-translations.ts",
     "./country-regions": "./src/country-regions.ts",
-    "./critical-translation-keys": "./src/critical-translation-keys.ts"
+    "./critical-translation-keys": "./src/critical-translation-keys.ts",
+    "./genre-localization": "./src/genreLocalization.ts"
   }
 }

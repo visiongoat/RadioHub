@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import { useState, useEffect } from "react";
 import { useRoute, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -39,7 +40,7 @@ export default function GenreDetail({
   const urlCountryCode = (urlCode && !isLanguageCode) ? urlCode : null;
   const urlCountryName = urlCountryCode ? getCountryFromCode(urlCountryCode) : null;
   
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const search = useSearch();
   const [, navigate] = useLocation();
   const urlPage = Math.max(1, parseInt(new URLSearchParams(search).get('page') || '1', 10) || 1);
@@ -189,7 +190,7 @@ export default function GenreDetail({
                     />
                   </svg>
                 </div>
-                <h1 className="capitalize">{genre.name}</h1>
+                <h1 className="capitalize">{genreDisplayName(genre, language)}</h1>
               </div>
             </div>
 

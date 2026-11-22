@@ -114,7 +114,6 @@ export default function AuthModal({ isOpen, onClose, defaultTab = "login", onSuc
         },
         body: JSON.stringify({
           fullName: data.name,
-          username: data.name.toLowerCase().replace(/\s+/g, '').slice(0, 20) + Math.random().toString(36).substr(2, 4),
           email: data.email,
           password: data.password,
         }),

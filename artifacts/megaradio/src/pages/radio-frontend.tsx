@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { homeStationPageOptions } from '@/lib/home-station-query';
@@ -1197,7 +1198,7 @@ export default function RadioFrontend({
                           className="w-full h-full flex items-center justify-center rounded-[5px] md:rounded-[10px]"
                         >
                           <h3 className="home-genre-title px-2 text-sm md:text-xl font-bold capitalize text-center text-white drop-shadow-lg">
-                            {genre.name}
+                            {genreDisplayName(genre, language)}
                           </h3>
                         </Link>
                       </SwiperSlide>

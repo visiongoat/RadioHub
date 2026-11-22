@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -66,6 +66,13 @@ function verifyDeployment(directory, entry) {
     existsSync(path.join(directory, "dist/public/index.html")),
     "Missing production SPA assets",
   );
+  const repairCommand = path.join(directory, 'dist/repair-legacy-user-handles.mjs');
+  assert.ok(existsSync(repairCommand), 'Missing production legacy-handle repair command');
+  const repairHelp = spawnSync(process.execPath, [repairCommand, '--help'], {
+    cwd: directory, env: { PATH: process.env.PATH || '' }, encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(repairHelp.status, 0, 'Production repair command must run without database credentials or dev dependencies');
+  assert.match(repairHelp.stdout, /--dry-run/);
   if (entry === 'index-api.mjs') assert.ok(
     existsSync(path.join(directory, "artifacts/megaradio/src")),
     "Missing translation scanner frontend source",

@@ -1,3 +1,6 @@
+import { useTranslation } from '@/hooks/useTranslation';
+import { useSeoRouting } from '@/hooks/useSeoRouting';
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import { useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +11,8 @@ interface GenreSliderProps {
 
 export default function GenreSlider({ genres }: GenreSliderProps) {
   const sliderRef = useRef<HTMLDivElement>(null);
+  const { language } = useTranslation();
+  const { getLocalizedUrl } = useSeoRouting();
 
   // Genre background gradients - matching the original design
   const getGenreGradient = (index: number) => {
@@ -68,11 +73,11 @@ export default function GenreSlider({ genres }: GenreSliderProps) {
             }}
           >
             <a 
-              href={`/genres/${genre.slug || genre.name.toLowerCase()}`}
+              href={getLocalizedUrl(`/genres/${genre.slug || genre.name.toLowerCase()}`)}
               className="h-[85px] flex items-center justify-center rounded-xl"
             >
               <h2 className="px-4 text-2xl font-bold capitalize text-center text-white drop-shadow-lg">
-                {genre.name}
+                {genreDisplayName(genre, language)}
               </h2>
             </a>
           </div>

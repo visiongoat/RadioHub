@@ -17,10 +17,6 @@ export default function Signup() {
   const [errors, setErrors] = useState<any>({});
   const [message, setMessage] = useState('');
 
-  const generateUsername = (fullName: string) => {
-    return fullName.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 20) + Math.floor(Math.random() * 1000);
-  };
-
   const submitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
@@ -44,8 +40,8 @@ export default function Signup() {
       return;
     }
 
-    // Auto-generate username if not provided
-    const username = signupForm.username || generateUsername(signupForm.fullName);
+    // Blank usernames use the server's unique full-name-based handle.
+    const username = signupForm.username.trim() || undefined;
 
     try {
       const response = await fetch('/api/auth/signup', {

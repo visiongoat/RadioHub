@@ -1,13 +1,15 @@
 import {mock,test} from 'node:test';
 import assert from 'node:assert/strict';
 const queries:{sql:string;params:any[]}[]=[];
-mock.module(new URL('../src/postgres-runtime.ts',import.meta.url).href,{namedExports:{getPostgresPool:()=>({query:async(sql:string,params:any[])=>{
+const query=async(sql:string,params:any[]=[])=>{
  queries.push({sql,params});
+ if(sql.startsWith('SELECT 1 FROM users'))return {rows:[],rowCount:0};
  if(sql.startsWith('INSERT INTO users'))return {rows:[{id:params[0],username:params[1],email:params[2],is_public_profile:params[10],source:{}}]};
  if(sql.includes('AS sender'))return {rows:[{id:'notice',user_id:'recipient',from_user_id:'sender',sender:{_id:'sender',fullName:'Sahin',avatar:'photo'},type:'follow',data:{}}]};
  if(sql.includes('GROUP BY type'))return {rows:[{type:'follow',count:'1',unread:'1'}]};
  return {rows:[],rowCount:2};
-}})}});
+};
+mock.module(new URL('../src/postgres-runtime.ts',import.meta.url).href,{namedExports:{getPostgresPool:()=>({query,connect:async()=>({query,release(){}})})}});
 const {pgCreateUser}=await import('../src/data/postgres-user-store');
 const {pgListNotifications,pgDismissAllNotifications,pgMarkAllNotificationsRead}=await import('../src/data/postgres-notification-store');
 test('new accounts are public by default; explicitly private signups stay private',async()=>{
