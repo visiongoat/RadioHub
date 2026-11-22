@@ -78,10 +78,11 @@ export async function getPopularStationsFromPostgres(options: {
   state?: string;
   limit: number;
   requireLogo?: boolean;
+  compact?: boolean;
 }): Promise<any[]> {
   const limit = boundedInteger(options.limit, 12, 500);
   const result = await getPostgresPool().query(
-    `SELECT * FROM stations
+    `SELECT ${options.compact ? CARD_SELECTION : '*'} FROM stations
      WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))
        AND ($1='' OR lower(country)=lower($1))
        AND ($2='%%' OR state ILIKE $2)

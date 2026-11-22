@@ -140,7 +140,7 @@ export function registerStationChatRoutes(
         await db.query("BEGIN");
         const row = (
           await db.query(
-            `UPDATE station_chat_messages SET content='Silinen mesaj',deleted_at=now() WHERE id=$1 AND station_id=$2 AND user_id=$3 AND created_at>now()-interval '48 hours' AND deleted_at IS NULL RETURNING id`,
+            `UPDATE station_chat_messages SET content='Silinen mesaj',caption='',deleted_at=now() WHERE id=$1 AND station_id=$2 AND user_id=$3 AND created_at>now()-interval '48 hours' AND deleted_at IS NULL RETURNING id`,
             [req.body.messageId, req.params.station, actor(req)],
           )
         ).rows[0];
@@ -172,7 +172,7 @@ export function registerStationChatRoutes(
           ? req.body.reason.trim().slice(0, 200)
           : "Inappropriate message";
       await getPostgresPool().query(
-        `INSERT INTO station_chat_reports(id,station_id,message_id,reporter_id,reported_user_id,content_snapshot,reason) SELECT $1,m.station_id,m.id,$2,m.user_id,m.content,$3 FROM station_chat_messages m WHERE m.id=$4 AND m.station_id=$5 AND m.deleted_at IS NULL ON CONFLICT(message_id,reporter_id) DO NOTHING`,
+        `INSERT INTO station_chat_reports(id,station_id,message_id,reporter_id,reported_user_id,content_snapshot,reason) SELECT $1,m.station_id,m.id,$2,m.user_id,m.content||CASE WHEN m.caption<>'' THEN E'\n'||m.caption ELSE '' END,$3 FROM station_chat_messages m WHERE m.id=$4 AND m.station_id=$5 AND m.deleted_at IS NULL ON CONFLICT(message_id,reporter_id) DO NOTHING`,
         [
           randomBytes(12).toString("hex"),
           actor(req),
@@ -229,7 +229,7 @@ export function registerStationChatRoutes(
       if (messageId) {
         const row = (
           await db.query(
-            "UPDATE station_chat_messages SET content='Silinen mesaj',deleted_at=now() WHERE id=$1 RETURNING station_id",
+            "UPDATE station_chat_messages SET content='Silinen mesaj',caption='',deleted_at=now() WHERE id=$1 RETURNING station_id",
             [messageId],
           )
         ).rows[0];

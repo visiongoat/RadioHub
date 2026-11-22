@@ -2069,7 +2069,13 @@ ${keysText}`;
             res.set('Cloudflare-CDN-Cache-Control', 'no-store');
             const search=typeof req.query.search==='string'?req.query.search.trim():'';
             if(search.length>100)return void res.status(400).json({error:'Search is too long'});
-            return void res.json({ data: search ? await (await import('../data/postgres-engagement-store')).pgSearchPublicProfiles(search,Number(req.query.limit)||50) : await getCommunityProfiles(Number(req.query.limit) || 100) });
+            if(req.query.sort==='discovery'&&!search)return void res.json(await (await import('../services/community-discovery')).getCommunityDiscovery(Number(req.query.limit)||24,Number(req.query.page)||1));
+            if(search){
+              const limit=Math.max(1,Math.min(99,Math.trunc(Number(req.query.limit))||24)),page=Math.max(1,Math.min(100,Math.trunc(Number(req.query.page))||1));
+              const profiles=await (await import('../data/postgres-engagement-store')).pgSearchPublicProfiles(search,limit+1,page,limit);
+              return void res.json({data:profiles.slice(0,limit),pagination:{page,limit,hasMore:profiles.length>limit}});
+            }
+            return void res.json({ data: await getCommunityProfiles(Number(req.query.limit) || 100) });
         }
         catch (error) {
             console.error('Error fetching public profiles:', error);

@@ -16,14 +16,14 @@ const profilePreferencesSchema = z.object({
 
 export const profileFieldsSchema = z.object({
   fullName: z.string().trim().min(1).max(200).optional(),
-  username: z.string().trim().min(1).max(100).optional(),
+  username: z.string().trim().toLowerCase().min(3).max(30).regex(/^[a-z0-9][a-z0-9_.-]*$/).optional(),
   email: z.string().trim().email().max(254).transform(value => value.toLowerCase()).optional(),
   avatar: z.string().max(2048).refine(value => !value || /^https?:\/\//i.test(value) || /^\/(?!\/)/.test(value), 'Invalid avatar URL').nullable().optional(),
   location: z.string().max(200).optional(), bio: z.string().max(2000).optional(),
   isPublicProfile: z.boolean().optional(), preferences: profilePreferencesSchema.optional(),
 });
 
-export const authProfileSchema = profileFieldsSchema.omit({ username: true, avatar: true, bio: true }).extend({
+export const authProfileSchema = profileFieldsSchema.omit({ avatar: true, bio: true }).extend({
   password: z.string().refine(value => !value.trim() || (value.length >= 8 && utf8Bytes(value) <= 72), 'Password must be at least 8 characters and at most 72 bytes').optional(),
 });
 

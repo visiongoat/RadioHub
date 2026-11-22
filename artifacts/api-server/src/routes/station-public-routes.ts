@@ -120,9 +120,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   app.get("/api/stations/popular", async (req, res) => {
     const { country, state, limit = 12, excludeBroken = 'false' } = req.query;
     const isTV = req.query.tv === '1';
+    const compact = req.query.slim === '1';
     const resolvedCountry = resolveToDbName(country as string) || (country as string) || 'all';
     const normalizedState = (state as string) || 'all';
-    const cacheKey = `popular_stations:${resolvedCountry}:${normalizedState}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:v2`;
+    const cacheKey = `popular_stations:${resolvedCountry}:${normalizedState}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:${compact ? 'compact' : 'full'}:v3`;
     const popularRequestStart = Date.now();
     try {
       {
@@ -132,6 +133,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
             state: state && !['all', 'null', 'undefined'].includes(String(state)) ? String(state) : undefined,
             limit: Number(limit),
             requireLogo: isTV,
+            compact,
           }),
           { freshTtl: 3600, staleTtl: 21600 },
         );

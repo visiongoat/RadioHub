@@ -11,6 +11,7 @@ const writes: Array<{ id: string; patch: any }> = [];
 const signups: any[] = [];
 const invalidations: string[] = [];
 const discoveryQueries: Record<string, any>[] = [];
+const followingQueries: any[] = [];
 let discoveryUsers: Record<string, any>[] = [];
 let databaseFails = false;
 let revokeFails = false;
@@ -27,7 +28,7 @@ const source = (id = ownerId) => ({ _id: id, id, username: id === ownerId ? 'lis
 const findUser = async (id: string) => { if (databaseFails) throw new Error('private-db-detail'); return users.get(id) || null; };
 const cache = { get: async () => null, set: async () => {}, del: async (key: string) => { invalidations.push(key); }, clearByPattern: async (key: string) => { invalidations.push(key); } };
 mock.module('../src/cache', { defaultExport: cache, namedExports: { CacheKeys: { userSocial: (email: string) => `social:${email}` } } });
-mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => { throw new Error('No real DB access allowed'); } } });
+mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => ({query: async (sql: string, params: any[]) => { if (!sql.startsWith('SELECT following_id FROM user_follows')) throw new Error('No real DB access allowed'); followingQueries.push({sql,params}); return {rows: [{following_id: otherId}]}; }}) } });
 mock.module('../src/data/postgres-listening-store', { namedExports: {
   pgListeningTotalMinutes: async (id: string) => (await findUser(id))?.totalListeningTime ?? 0,
 } });
@@ -56,6 +57,7 @@ mock.module('../src/data/postgres-user-store', { namedExports: {
   pgUpdateUser: async (id: string, patch: any) => {
     if (databaseFails) throw new Error('update-db');
     const previous = users.get(id); if (!previous) return null;
+    if (patch.username === 'taken_name') throw Object.assign(new Error('Username is already in use'), {code:'23505'});
     writes.push({ id, patch });
     const next = { ...previous, ...patch, ...(repairedHandle ? { username: repairedHandle } : {}), preferences: { ...previous.preferences, ...patch.preferences },
       notificationSettings: { ...previous.notificationSettings, ...patch.notificationSettings } };
@@ -97,7 +99,7 @@ before(async () => {
 });
 after(() => new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve())));
 beforeEach(() => {
-  users = new Map([[ownerId, source()], [otherId, source(otherId)]]); writes.length = 0; invalidations.length = 0;
+  users = new Map([[ownerId, source()], [otherId, source(otherId)]]); writes.length = 0; invalidations.length = 0; followingQueries.length = 0;
   discoveryQueries.length = 0; discoveryUsers = [];
   databaseFails = false; revokeFails = false; revokeFinished = false; deletedKeys = []; invalidImage = false; uploadFailure = false;
   resetAvailable = false;
@@ -314,4 +316,26 @@ test('invalid discovery values are rejected without a profile write', async () =
     assert.equal((await request('/api/auth/profile','PUT',{preferences})).status,400);
   }
   assert.equal(writes.length,0);
+});
+
+
+test('username edit normalizes and persists only the chosen handle; conflicts and malformed names cannot succeed', async () => {
+  const response = await request('/api/auth/profile', 'PUT', {username:' Alex_White '});
+  assert.equal(response.status,200); assert.equal((await response.json()).user.username,'alex_white');
+  assert.deepEqual(writes[0],{id:ownerId,patch:{username:'alex_white'}});
+  for (const username of ['ab','bad name','@name','a'.repeat(31),'şahin']) assert.equal((await request('/api/auth/profile','PUT',{username})).status,400);
+  const conflict=await request('/api/auth/profile','PUT',{username:'taken_name'});
+  assert.equal(conflict.status,409); assert.equal((await conflict.json()).code,'USERNAME_TAKEN');
+  assert.equal(writes.length,1); assert.equal(users.get(ownerId).username,'alex_white');
+});
+
+test('directory follow state is authenticated, bounded and fetched once for the current viewer', async () => {
+  const path='/api/user/following-status?ids='+[ownerId,otherId,otherId].join(',');
+  assert.equal((await request(path,'GET',undefined,null)).status,401);
+  const response=await request(path); assert.equal(response.status,200);
+  assert.equal(response.headers.get('cache-control'),'private, no-store');
+  assert.deepEqual(await response.json(),{statuses:{[ownerId]:false,[otherId]:true}});
+  assert.equal(followingQueries.length,1); assert.deepEqual(followingQueries[0].params,[ownerId,[ownerId,otherId]]);
+  for (const ids of ['', 'not-an-id', Array.from({length:101},(_,i)=>i.toString(16).padStart(24,'0')).join(',')]) assert.equal((await request('/api/user/following-status?ids='+ids)).status,400);
+  assert.equal(followingQueries.length,1);
 });

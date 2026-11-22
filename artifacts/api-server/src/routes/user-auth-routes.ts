@@ -1455,7 +1455,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             });
         }
         catch (error: any) {
-            res.status(error?.code === '23505' ? 409 : 500).json({ error: error?.code === '23505' ? 'Email is already in use' : 'Failed to update profile' });
+            const usernameConflict = error?.code === '23505' && /username/i.test(String(error?.message || error?.constraint || ''));
+            res.status(error?.code === '23505' ? 409 : 500).json({ error: error?.code === '23505' ? usernameConflict ? 'Username is already in use' : 'Email is already in use' : 'Failed to update profile', ...(usernameConflict ? { code: 'USERNAME_TAKEN' } : {}) });
         }
     });
     app.get('/api/user/notification-settings', requireAuth, async (req, res) => {
@@ -1618,6 +1619,21 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             logger.error('Unfollow error:', error?.message || error);
             res.status(500).json({ error: 'Failed to unfollow user' });
         }
+    });
+    // One viewer-scoped query for a visible directory page, never one request per row.
+    app.get('/api/user/following-status', requireAuth, async (req, res) => {
+        const input = typeof req.query.ids === 'string' ? req.query.ids : '';
+        const ids = [...new Set(input.split(',').filter(Boolean))];
+        if (!ids.length || ids.length > 100 || ids.some(id => !/^[a-f0-9]{24}$/i.test(id))) {
+            return void res.status(400).json({ error: 'Provide 1 to 100 valid user IDs' });
+        }
+        const viewer = String((req as any).user?._id || (req.session as any)?.user?.userId || (req.session as any)?.userId || '');
+        try {
+            const result = await getPostgresPool().query('SELECT following_id FROM user_follows WHERE follower_id=$1 AND following_id=ANY($2::text[])', [viewer, ids]);
+            const following = new Set(result.rows.map(row => String(row.following_id)));
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.json({ statuses: Object.fromEntries(ids.map(id => [id, following.has(id)])) });
+        } catch { res.status(500).json({ error: 'Failed to check follow status' }); }
     });
     app.get("/api/user/is-following/:userId", requireAuth, async (req, res) => {
         try {
