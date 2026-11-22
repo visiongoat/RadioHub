@@ -36,7 +36,10 @@ async function buildAll() {
 
   const result = await esbuild({
     metafile: true,
-    entryPoints: [entryAbs],
+    entryPoints: [entryAbs, path.join(artifactDir, 'src/scripts/repair-legacy-user-handles.ts')],
+    // Keep the maintenance command at a stable, documented path in production deploys.
+    outbase: path.join(artifactDir, 'src'),
+    entryNames: '[name]',
     platform: "node",
     bundle: true,
     format: "esm",

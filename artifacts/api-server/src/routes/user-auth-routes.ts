@@ -1,3 +1,4 @@
+import { registerFacebookAuthRoutes } from './facebook-auth-routes';
 import {publishStoredNotification} from '../services/notification-events';
 import {googleIdentity, canLinkGoogleAccount} from '../auth/google-identity-policy';
 import { pgListeningTotalMinutes } from '../data/postgres-listening-store';
@@ -8,6 +9,7 @@ import { getPostgresPool } from '../postgres-runtime';
 import { pgListAuthEvents } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
 import { publicUserIdentity } from '../utils/public-user-identity';
+import { needsGeneratedHandle } from '../utils/user-handle';
 import { invalidateCommunityProfiles } from '../services/community-profiles';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { googleOAuthCallbackUrl, safeOAuthReturnTo, resolveGoogleOAuthReturnTo, buildRedirectWithToken, buildOAuthFailureRedirect, buildGoogleSessionRedirect } from '../auth/oauth-redirect';
@@ -123,7 +125,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
     async function saveIdentity(user: any, patch: Record<string, any>): Promise<any> {
         Object.assign(user, patch);
-        await pgUpdateUser(String(user._id), patch);
+        Object.assign(user, await pgUpdateUser(String(user._id), patch));
         return user;
     }
     async function uniqueUserSlug(base: string): Promise<string> {
@@ -512,21 +514,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             res.status(500).json({ error: 'Authentication setup error' });
         }
     });
-    app.get("/api/auth/facebook", (req, res) => {
-        const { getSocialAuthStatus } = deps;
-        const status = getSocialAuthStatus();
-        if (!status.facebook) {
-            return void res.status(501).json({
-                error: 'Facebook authentication not configured',
-                message: 'Social login with Facebook requires API keys to be configured.'
-            });
-        }
-        // TODO: Implement Facebook OAuth when credentials are provided
-        res.status(501).json({
-            error: 'Facebook authentication not implemented',
-            message: 'Facebook OAuth flow will be implemented when Facebook credentials are provided.'
-        });
-    });
+    registerFacebookAuthRoutes(app, { generateAuthToken });
     app.get("/api/auth/apple", async (req, res) => {
         const { getSocialAuthStatus } = deps;
         const status = getSocialAuthStatus();
@@ -647,15 +635,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 });
             }
         })(req, res, next);
-    });
-    app.get("/api/auth/facebook/callback", async (req, res) => {
-        try {
-            res.redirect('/?error=facebook_auth_not_implemented');
-        }
-        catch (error) {
-            console.error('Facebook OAuth callback error:', error);
-            res.redirect('/?error=facebook_auth_failed');
-        }
     });
     app.post("/api/auth/apple/callback", async (req, res) => {
         const frontendBase = process.env.FRONTEND_URL || '';
@@ -783,7 +762,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                         appleId: appleId,
                         email: appleEmail || `apple-${appleId}@oauth.invalid`,
                         fullName: appleFullName || undefined,
-                        username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                         slug: userSlug,
                         passwordHash: '',
                         emailVerified: true,
@@ -892,7 +870,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                         email: verifiedEmail,
                         fullName: verifiedName || verifiedEmail.split('@')[0],
                         avatar,
-                        username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                         slug: userSlug,
                         passwordHash: '',
                         emailVerified: true,
@@ -982,7 +959,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                         appleId: verifiedAppleId,
                         email: verifiedEmail || `apple-${verifiedAppleId}@oauth.invalid`,
                         fullName: displayName || 'Apple User',
-                        username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                         slug: userSlug,
                         passwordHash: '',
                         emailVerified: !!verifiedEmail,
@@ -1039,7 +1015,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             }
             // Update last login
             user.lastLoginAt = new Date();
-            await pgUpdateUser(String(user._id), { lastLoginAt: user.lastLoginAt });
+            Object.assign(user, await pgUpdateUser(String(user._id), { lastLoginAt: user.lastLoginAt }));
             const token = await generateAuthToken(user._id.toString(), deviceType, deviceName);
             void logAuthEvent(req, { method: 'mobile-email', event: 'token_issued', ok: true, email, userId: user._id?.toString(), message: `device=${deviceType} tokenLen=${token.length}` });
             res.json({
@@ -1068,7 +1044,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         void logAuthEvent(req, { method: 'email', event: 'signup_request_received', ok: true, email: emailRaw, message: `username=${req.body?.username}` });
         try {
             const { fullName, username, email, password } = req.body;
-            if (!fullName || !username || !email || !password) {
+            if (typeof fullName !== 'string' || !fullName.trim() || typeof email !== 'string' || !email || typeof password !== 'string' || !password) {
                 void logAuthEvent(req, { method: 'email', event: 'signup_missing_fields', ok: false, email: emailRaw });
                 return void res.status(400).json({ error: 'All fields are required' });
             }
@@ -1081,10 +1057,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 void logAuthEvent(req, { method: 'email', event: 'signup_weak_password', ok: false, email, message: `len=${password.length}` });
                 return void res.status(400).json({ error: 'Password must be at least 8 characters long' });
             }
-            if (username.length < 3 || username.length > 30) {
+            if (username !== undefined && (typeof username !== 'string' || username.length < 3 || username.length > 30)) {
                 return void res.status(400).json({ error: 'Username must be 3-30 characters long' });
             }
-            if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+            if (username !== undefined && !/^[a-zA-Z0-9_.-]+$/.test(username)) {
                 return void res.status(400).json({ error: 'Username may only contain letters, numbers, underscores, dots, and hyphens' });
             }
             // Check if user exists
@@ -1099,7 +1075,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             const saltRounds = 12;
             const passwordHash = await bcrypt.default.hash(password, saltRounds);
             // Create user slug
-            const userSlug = username.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            const userSlug = username?.toLowerCase().replace(/[^a-z0-9]/g, '-');
             const userId = newPublicUserId();
             const stats = {
                 totalPlays: 0,
@@ -1146,7 +1122,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         catch (error: any) {
             console.error('Signup error:', error);
             void logAuthEvent(req, { method: 'email', event: 'signup_unhandled_error', ok: false, email: emailRaw, message: error?.message || String(error) });
-            res.status(500).json({ error: 'Failed to create account' });
+            res.status(error?.code === '23505' ? 409 : 500).json({ error: error?.code === '23505' ? 'User with this email or username already exists' : 'Failed to create account' });
         }
     });
     // User login
@@ -1190,7 +1166,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 user.stats = {} as any;
             user.stats!.lastActiveDate = new Date();
             {
-                await pgUpdateUser(String(user._id), { lastLoginAt: user.lastLoginAt, stats: user.stats });
+                Object.assign(user, await pgUpdateUser(String(user._id), { lastLoginAt: user.lastLoginAt, stats: user.stats }));
             }
             const userData = {
                 _id: user._id,
@@ -1357,6 +1333,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 return void res.json({ user: null, authenticated: false });
             }
             if (['inactive', 'suspended', 'banned', 'deleted'].includes(user.status) || user.isActive === false) return void res.status(403).json({ error: 'Account is not active' });
+            if (needsGeneratedHandle(user.username, user)) {
+                Object.assign(user, await pgUpdateUser(String(user._id), {}));
+            }
             const following = followState.following;
             const actualFollowingCount = following.length;
             const actualFollowersCount = followState.followersCount;
