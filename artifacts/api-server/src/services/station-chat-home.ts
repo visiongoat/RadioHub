@@ -122,7 +122,8 @@ export async function activeStationRooms(country: string, actor: string) {
  ) people ON true
  LEFT JOIN LATERAL (
    SELECT jsonb_agg(p) AS items FROM (
-     SELECT m.id AS "_id",p.display_name AS name,m.content,m.created_at AS "createdAt"
+     SELECT m.id AS "_id",p.display_name AS name,m.content,m.created_at AS "createdAt",
+       m.user_id AS "userId",u.avatar,u.source->>'profileImageUrl' AS "profileImageUrl"
      FROM station_chat_messages m JOIN station_chat_home_previews p ON p.message_id=m.id AND p.decision='approved' AND p.reviewed_content=m.content
      JOIN users u ON u.id=m.user_id AND u.is_public_profile
           AND COALESCE(u.status,'active') NOT IN ('inactive','suspended','banned','deleted')

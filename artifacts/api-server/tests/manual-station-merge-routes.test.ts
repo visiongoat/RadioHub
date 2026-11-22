@@ -93,7 +93,7 @@ test('apply forwards the exact sanitized selection and reviewed override without
   assert.deepEqual(calls[0], ['merge', [a, b], { primaryId: a, validateGroup: false, patch: {},
     manualReview: { expectedFingerprint: request.expectedFingerprint, confirmIdentityOverride: true } }]);
   for (const identifier of [a, b, 'uuid-0', 'uuid-1', 'radio-0', 'radio-1', 'old-0', 'old-1', 'merged-0', 'merged-1', 'merged-uuid-0', 'merged-uuid-1']) {
-    assert.ok(invalidations.includes(`station:detail:editorial-v2:${identifier}`), identifier);
+    assert.ok(invalidations.includes(`station:detail:editorial-v3-taxonomy:${identifier}`), identifier);
   }
   for (const pattern of ['public:stations:', 'public:precomputed_stations:', 'public:similar_stations:', 'raw:admin_stations:', 'local:seo-quick', 'local:similar', 'counts']) assert.ok(invalidations.includes(pattern), pattern);
 });

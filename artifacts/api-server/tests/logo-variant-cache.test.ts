@@ -17,8 +17,8 @@ it('invalidates exact details/aliases and only matching global or country card p
   pools.set('precomputed_popular:v1:global:limit:24', [{ _id: 'other' }]);
   pools.set('precomputed_stations:germany', { stations: [{ id: station.id }] });
   await invalidateLogoVariantCaches(station);
-  assert.ok(deleted.includes('public-health:v2:station:detail:editorial-v2:old-radio'));
-  assert.ok(deleted.includes('public-health:v2:station:detail:editorial-v2:' + station.id));
+  assert.ok(deleted.includes('public-health:v2:station:detail:editorial-v3-taxonomy:old-radio'));
+  assert.ok(deleted.includes('public-health:v2:station:detail:editorial-v3-taxonomy:' + station.id));
   assert.ok(deleted.includes('precomputed_popular:v1:global:limit:12:swr'));
   assert.ok(deleted.includes('precomputed_stations:germany:swr'));
   assert.ok(!deleted.includes('precomputed_popular:v1:global:limit:24:swr'));

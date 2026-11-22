@@ -49,7 +49,7 @@ for (const method of ['get', 'post', 'put', 'patch']) app[method] = (path: strin
 registerAdminDescriptionRoutes(app as Express, () => {});
 registerAdminStreamHealthRoutes(app as Express, () => {});
 registerAdminStationRedirectRoutes(app as Express, () => {});
-const key = (identifier: string) => `station:detail:editorial-v2:${identifier}`;
+const key = (identifier: string) => `station:detail:editorial-v3-taxonomy:${identifier}`;
 async function invoke(method: string, path: string, body: unknown) {
   const response: any = { statusCode: 200, status(code: number) { this.statusCode = code; return this; },
     set() { return this; }, json(body: unknown) { this.body = body; return this; } };

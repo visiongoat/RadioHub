@@ -7,6 +7,10 @@ export interface MetadataResult {
   artist?: string;
   station?: string;
   genre?: string;
+  /** Real upstream transport activity; never renewed by a REST cache read. */
+  observedAt?: number;
+  /** Last distinct ICY title, separate from transport freshness for long songs. */
+  titleChangedAt?: number;
 }
 
 interface StreamAnalysis {
@@ -81,6 +85,14 @@ export function getStreamMetadataService(): StreamMetadataService {
 export class StreamMetadataService {
   private connections = new Map<string, StreamConnection>();
   private maxConnections = 50;
+
+  private snapshot(conn: StreamConnection): MetadataResult {
+    return conn.nowPlaying ? {
+      ...conn.metadata,
+      observedAt: conn.lastActivity,
+      titleChangedAt: conn.lastUpdate,
+    } : {...conn.metadata};
+  }
 
   private analyzeStream(
     url: string,
@@ -331,7 +343,7 @@ export class StreamMetadataService {
   getMetadata(streamUrl: string): MetadataResult {
     const conn = this.connections.get(streamUrl);
     if (!conn || (conn.nowPlaying&&Date.now()-conn.lastActivity>45000)) return {};
-    return conn.metadata;
+    return this.snapshot(conn);
   }
 
   async getStationMetadata(station: any): Promise<MetadataResult> {
@@ -341,7 +353,7 @@ export class StreamMetadataService {
 
     const conn = this.getOrCreateConnection(streamUrl);
     if (conn.nowPlaying) {
-      return conn.metadata;
+      return this.snapshot(conn);
     }
 
     return new Promise((resolve) => {
@@ -353,9 +365,9 @@ export class StreamMetadataService {
         clearInterval(check);
         resolve(value);
       };
-      const timeout = setTimeout(() => settle(conn.metadata), 8000);
+      const timeout = setTimeout(() => settle(this.snapshot(conn)), 8000);
       const check = setInterval(() => {
-        if (conn.nowPlaying) settle(conn.metadata);
+        if (conn.nowPlaying) settle(this.snapshot(conn));
       }, 500);
     });
   }

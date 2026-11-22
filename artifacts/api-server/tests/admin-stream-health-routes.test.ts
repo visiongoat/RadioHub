@@ -56,8 +56,8 @@ test('only persisted raw and resolved candidates are probed and committed result
   const result = await response.json(); assert.equal(result.success, true); assert.equal(result.noIndex, false); assert.equal(result.cacheInvalidated, true);
   assert.deepEqual(calls.find(call => call[0] === 'probe')[1], [station.urlResolved,station.url]);
   assert.deepEqual(calls.find(call => call[0] === 'save').slice(1, 3), [id, body().expected]);
-  assert.ok(calls.some(call => call[1] === 'public-health:v2:station:detail:editorial-v2:old-nrj'));
-  assert.ok(calls.some(call => call[1] === `public-health:v2:station:detail:editorial-v2:${id}`));
+  assert.ok(calls.some(call => call[1] === 'public-health:v2:station:detail:editorial-v3-taxonomy:old-nrj'));
+  assert.ok(calls.some(call => call[1] === `public-health:v2:station:detail:editorial-v3-taxonomy:${id}`));
   assert.ok(!JSON.stringify(result).includes('https://'));
 });
 test('strict confirmation/body/id and32KiB bound survive an earlier global JSON parser', async () => {
@@ -89,5 +89,5 @@ test('native CAS conflict/rejected/missing and database failure stay distinct', 
 test('committed recovery remains success when a cache refresh fails and attempts remaining keys', async () => {
   cacheFailure = true; const response = await post(); assert.equal(response.status, 200);
   const result = await response.json(); assert.equal(result.success, true); assert.equal(result.cacheInvalidated, false); assert.ok(result.cacheWarning);
-  assert.ok(calls.some(call => call[1] === `public-health:v2:station:detail:editorial-v2:${id}`)); assert.ok(!JSON.stringify(result).includes('secret'));
+  assert.ok(calls.some(call => call[1] === `public-health:v2:station:detail:editorial-v3-taxonomy:${id}`)); assert.ok(!JSON.stringify(result).includes('secret'));
 });

@@ -64,7 +64,20 @@ export async function pgFindSubscriptionUser(criteria: {
 export async function pgUpsertSubscription(userId: string, patch: Record<string, any>): Promise<void> {
   await ensurePostgresUser(userId);
   await withLockedSubscription(userId, async (client, current) => {
-    await writeSubscription(client, userId, current, patch);
+    const verifiedPatch = {...patch};
+    if (verifiedPatch.appleSignedProof === true) {
+      // Signature validity is not current refund state. A restore of an older
+      // StoreKit JWS must not reactivate or replace a newer Apple webhook.
+      // This comparison belongs under the same row lock as the entitlement write.
+      const incoming = new Date(verifiedPatch.lastSignedDate || 0).getTime();
+      const stored = Math.max(new Date(current.lastSignedDate || 0).getTime() || 0,
+        current.isActive === false ? new Date(current.cancelledAt || 0).getTime() || 0 : 0);
+      if (!Number.isFinite(incoming) || incoming <= 0 || stored > incoming || (current.isActive === false && stored >= incoming)) {
+        throw Object.assign(new Error('A newer Apple subscription state supersedes this transaction'), {code:'apple_stale_proof'});
+      }
+    }
+    delete verifiedPatch.appleSignedProof;
+    await writeSubscription(client, userId, current, verifiedPatch);
   });
 }
 
