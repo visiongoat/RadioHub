@@ -17,7 +17,7 @@ const verified = { id: "verified", mode: "all", status: "complete", finished_at:
 
 function fixture(overrides: Record<string, any> = {}) {
   const state = { authority: false, run: verified, checkpointCount: 1, incomplete: 0, hasDocuments: false,
-    hasCheckpoints: false, lockAvailable: true, applied: [], connectError: null, queryError: null, indexCreated: false, ...overrides };
+    hasCheckpoints: false, lockAvailable: true, applied: [], connectError: null, queryError: null, indexes: new Set<string>(), ...overrides };
   const calls: string[] = [];
   let releases = 0;
   let ends = 0;
@@ -28,10 +28,18 @@ function fixture(overrides: Record<string, any> = {}) {
       if (state.queryError?.(sql)) throw new Error("injected query failure");
       if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: state.lockAvailable }] };
       if (sql.startsWith("SELECT current_setting('lock_timeout')")) return { rows: [{ value: '60s' }] };
-      if (sql.startsWith('CREATE INDEX CONCURRENTLY')) state.indexCreated = true;
-      if (sql.startsWith('SELECT i.indisvalid')) return { rows: state.indexCreated ? [{ valid: true, ready: true,
-        correct_table: true, method: 'gin', unique: false, keys: 1, no_predicate: true,
-        operator_class: 'gin_trgm_ops', expression: _values?.[0] === 'stations_name_fold_trgm_idx' ? 'station_search_key(name)' : "lower((source ->> 'genre'::text))" }] : [] };
+      if (sql.startsWith('CREATE INDEX CONCURRENTLY')) state.indexes.add(sql.split(/\s+/)[3]);
+      if (sql.startsWith('SELECT i.indisvalid')) {
+        const name = String(_values?.[0]);
+        if (!state.indexes.has(name)) return { rows: [] };
+        return { rows: [name === 'stations_recommendation_order_idx'
+          ? { valid:true, ready:true, correct_table:true, method:'btree', unique:false, keys:3, attributes:3,
+              no_predicate:true, expression:null, default_operator_classes:true, column_collations:true,
+              key_columns:['votes','click_count','id'], key_options:[1,1,0] }
+          : { valid:true, ready:true, correct_table:true, method:'gin', unique:false, keys:1, no_predicate:true,
+              operator_class:'gin_trgm_ops', expression:name === 'stations_name_fold_trgm_idx'
+                ? 'station_search_key(name)' : "lower((source ->> 'genre'::text))" }] };
+      }
       if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: state.lockAvailable }] };
       if (sql.startsWith("SELECT name,checksum")) return { rows: state.applied };
       if (sql.startsWith("SELECT domain")) return { rows: state.authority ? [{ domain: "USER_STORE" }] : [] };
@@ -67,8 +75,10 @@ test("migration connection validates URLs, verifies TLS and bounds every timeout
 test("schema installer executes normal SQL transactionally and the reviewed index concurrently on its locked connection", async () => {
   const db = fixture();
   assert.deepEqual(await applyPostgresMigrations({ environment, migrationsDirectory, createPool: db.createPool, log() {} }), { applied: files.length, skipped: 0 });
-  assert.equal(db.calls.filter((sql) => sql === "BEGIN").length, files.length - 2);
-  assert.equal(db.calls.filter((sql) => sql === "COMMIT").length, files.length - 2);
+  const concurrentNames = ['stations_source_genre_trgm_idx','stations_name_fold_trgm_idx','stations_recommendation_order_idx'];
+  assert.deepEqual(db.calls.filter(sql => sql.startsWith('CREATE INDEX CONCURRENTLY')).map(sql => sql.split(/\s+/)[3]),concurrentNames);
+  assert.equal(db.calls.filter((sql) => sql === "BEGIN").length, files.length - concurrentNames.length);
+  assert.equal(db.calls.filter((sql) => sql === "COMMIT").length, files.length - concurrentNames.length);
   const indexPosition = db.calls.findIndex(sql => sql.startsWith('CREATE INDEX CONCURRENTLY'));
   // Later transactional migrations may follow the concurrent index. Verify
   // its own transaction boundary, not that it happens to be the last file.
