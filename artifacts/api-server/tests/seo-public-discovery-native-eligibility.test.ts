@@ -16,8 +16,10 @@ mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => 
   query: async (query: string | { text: string }) => {
     const sql = typeof query === 'string' ? query : query.text;
     queries.push(sql);
-    assert.match(sql.trim(), /^SELECT\b/);
-    assert.doesNotMatch(sql.slice(sql.indexOf('WHERE')), /no_index/, 'Noindex is not a public playback visibility filter');
+    assert.match(sql.trim(), /^(?:SELECT|WITH)\b/);
+    assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE)\b/i, 'Discovery only reads the catalogue');
+    const visibilityConditions = sql.match(/\bWHERE\s+([\s\S]*?)(?:\bORDER BY\b|\bGROUP BY\b|$)/i)?.[1] || '';
+    assert.doesNotMatch(visibilityConditions, /\bno_index\b/, 'Noindex is not a public playback visibility filter');
     // A raw-row fixture must not supply a column the real SQL omitted.
     assert.match(sql, /SELECT s\.\*|s\.no_index/);
     return { rows, rowCount: rows.length };
