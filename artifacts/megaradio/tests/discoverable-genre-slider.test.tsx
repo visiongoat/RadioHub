@@ -11,7 +11,7 @@ vi.mock('wouter', () => ({
   Link: ({ to, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => <a href={to} {...props}>{children}</a>,
 }));
 vi.mock('@/hooks/useSeoRouting', () => ({ useSeoRouting: () => ({ getLocalizedUrl: (path: string) => `/de${path}` }) }));
-vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }) }));
+vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ language: 'en', t: (_key: string, fallback: string) => fallback }) }));
 
 import DiscoverableGenreSlider from '../src/components/DiscoverableGenreSlider';
 import { getGenreImageSources } from '../src/components/DiscoverableGenreImage';
@@ -76,7 +76,7 @@ it('tries a replacement image instead of retaining the failed image state', () =
 
 it('uses the bundled Jazz artwork for its original upload path', () => {
   render(<DiscoverableGenreSlider genres={[jazz]} />);
-  const card = screen.getByRole('link', { name: 'Jazz Music Discover all the stations' });
+  const card = screen.getByRole('link', { name: 'Jazz Discover all the stations' });
   expect(card.querySelector('img')).toHaveAttribute('src', jazzDiscoverableImage);
   expect(card.querySelector('img')).toBeVisible();
   expect(card).toHaveAttribute('href', '/de/genres/jazz');
@@ -84,7 +84,7 @@ it('uses the bundled Jazz artwork for its original upload path', () => {
 
 it.each([undefined, ''])('uses the bundled Jazz artwork when its configured image is %s', (discoverableImage) => {
   render(<DiscoverableGenreSlider genres={[{ ...jazz, discoverableImage }]} />);
-  const card = screen.getByRole('link', { name: /Jazz Music/ });
+  const card = screen.getByRole('link', { name: /Jazz/ });
   expect(card.querySelector('img')).toHaveAttribute('src', jazzDiscoverableImage);
   expect(card.querySelector('img')).toBeVisible();
 });
@@ -92,7 +92,7 @@ it.each([undefined, ''])('uses the bundled Jazz artwork when its configured imag
 it('tries a custom Jazz image first and falls back to the bundled artwork once', () => {
   const customJazz = { ...jazz, discoverableImage: '/uploads/genres/discoverable/custom-jazz.png' };
   const view = render(<DiscoverableGenreSlider genres={[customJazz]} />);
-  const card = screen.getByRole('link', { name: /Jazz Music/ });
+  const card = screen.getByRole('link', { name: /Jazz/ });
   expect(card.querySelector('img')).toHaveAttribute('src', customJazz.discoverableImage);
 
   fireEvent.error(card.querySelector('img')!);
@@ -102,7 +102,7 @@ it('tries a custom Jazz image first and falls back to the bundled artwork once',
   fireEvent.error(card.querySelector('img')!);
   expect(card.querySelector('img')).toBeNull();
   expect(gradient(card)).toBeVisible();
-  expect(screen.getByText('Jazz Music')).toBeVisible();
+  expect(screen.getByText('Jazz')).toBeVisible();
   expect(card).toHaveAttribute('href', '/de/genres/jazz');
 
   view.rerender(<DiscoverableGenreSlider genres={[{ ...customJazz }]} />);
@@ -111,7 +111,7 @@ it('tries a custom Jazz image first and falls back to the bundled artwork once',
 
 it('tries the original Jazz upload once if the bundled image fails, then stops at the gradient', () => {
   const view = render(<DiscoverableGenreSlider genres={[jazz]} />);
-  const card = screen.getByRole('link', { name: /Jazz Music/ });
+  const card = screen.getByRole('link', { name: /Jazz/ });
   fireEvent.error(card.querySelector('img')!);
   expect(card.querySelector('img')).toHaveAttribute('src', jazz.discoverableImage);
   expect(card.querySelector('img')).toBeVisible();
@@ -140,7 +140,7 @@ it('respects an external Jazz image even when its path matches the original uplo
 it('retries a changed custom Jazz source after both previous sources failed', () => {
   const customJazz = { ...jazz, discoverableImage: '/uploads/genres/discoverable/custom-jazz.png' };
   const view = render(<DiscoverableGenreSlider genres={[customJazz]} />);
-  const card = screen.getByRole('link', { name: /Jazz Music/ });
+  const card = screen.getByRole('link', { name: /Jazz/ });
   fireEvent.error(card.querySelector('img')!);
   fireEvent.error(card.querySelector('img')!);
   expect(card.querySelector('img')).toBeNull();

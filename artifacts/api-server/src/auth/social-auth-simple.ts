@@ -1,6 +1,7 @@
 import { normalizeGenreSlug, SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
 import { getPostgresPool } from '../postgres-runtime';
 import { pgCreateUser } from '../data/postgres-user-store';
+import { userHandleBase, userHandleCandidate } from '../utils/user-handle';
 
 // Check if social auth is configured
 export function getSocialAuthStatus() {
@@ -13,7 +14,8 @@ export function getSocialAuthStatus() {
 
 // Helper function to generate unique username
 export async function generateUniqueUsername(baseUsername: string): Promise<string> {
-  let username = baseUsername.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const base = userHandleBase(baseUsername);
+  let username = base;
   let counter = 0;
   
   while (true) {
@@ -22,7 +24,7 @@ export async function generateUniqueUsername(baseUsername: string): Promise<stri
       return username;
     }
     counter++;
-    username = `${baseUsername}${counter}`;
+    username = userHandleCandidate(base, counter);
   }
 }
 
@@ -113,12 +115,10 @@ export async function createUserFromSocialProfile(profile: any, provider: 'googl
   const email = profile.emails?.[0]?.value || profile.email;
   const fullName = profile.displayName || 
                    `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim() ||
-                   profile.name?.firstName + ' ' + profile.name?.lastName || '';
-  const username = email?.split('@')[0] || `${provider}_user_${profile.id}`;
+                   [profile.name?.firstName, profile.name?.lastName].filter(Boolean).join(' ');
 
   const userData: any = {
     fullName,
-    username: await generateUniqueUsername(username),
     email,
     emailVerified: true, // Social emails are pre-verified
     profilePicture: profile.photos?.[0]?.value || profile.picture,
@@ -150,10 +150,8 @@ export async function createUserFromSocialProfile(profile: any, provider: 'googl
     slugSource = userData.username;
   } else if (userData.fullName) {
     slugSource = userData.fullName;
-  } else if (userData.email) {
-    slugSource = userData.email.split('@')[0];
   } else {
-    slugSource = `user-${Date.now()}`;
+    slugSource = 'listener';
   }
 
   userData.slug = await generateUniqueSlug(slugSource, 'user');

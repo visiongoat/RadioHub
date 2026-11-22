@@ -28,6 +28,13 @@ test('uses a bounded quality order, native visibility and exact indexed genre me
   const result = await getRecommendationPool(recommendationPoolScope('Austria', 'rock,jazz'));
   assert.deepEqual(queries[0].values, ['austria', ['jazz', 'rock']]);
   assert.match(queries[0].text, /LIMIT 100/);
+  assert.match(queries[0].text, /WITH candidates AS MATERIALIZED/);
+  const [candidateSql, projectionSql] = queries[0].text.split(')\n        SELECT');
+  assert.doesNotMatch(candidateSql, /s\.source|jsonb_build_object/);
+  assert.match(candidateSql, /LIMIT 100/);
+  assert.match(projectionSql, /jsonb_build_object/);
+  assert.match(projectionSql, /FROM candidates c JOIN stations s ON s.id=c.id/);
+  assert.match(projectionSql, /ORDER BY c.votes DESC NULLS LAST,c.click_count DESC NULLS LAST,c.id/);
   assert.match(queries[0].text, /s\.votes DESC/);
   assert.match(queries[0].text, /s\.is_list_visible IS TRUE/);
   assert.match(queries[0].text, /station_genres/);

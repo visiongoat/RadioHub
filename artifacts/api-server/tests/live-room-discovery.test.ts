@@ -1,4 +1,4 @@
-import { test, describe, before, after } from "node:test";
+import { test, describe, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createNativePostgresFixture } from "./helpers/native-postgres-fixture";
@@ -65,23 +65,44 @@ describe(
     after(async () => {
       await f?.close();
     });
-    test('discovery needs recent real messages, not presence alone or an expired conversation',async()=>{
-      const {activeStationRooms}=await import('../src/services/station-chat-home');
-      const quiet='e'.repeat(24);
-      await f.pool.query(`INSERT INTO stations(id,station_uuid,name,slug,url,country,country_code,is_list_visible) VALUES($1,$1,'FR quiet','fr-quiet','https://radio.test/fr','France','FR',true)`,[quiet]);
-      await f.pool.query(`INSERT INTO station_chat_sessions(token_hash,station_id,user_id,identity_id,connected,expires_at) VALUES('fr',$1,$2,$2,true,now()+interval '1 hour')`,[quiet,alice]);
-      assert.equal((await activeStationRooms('France','')).rooms.length,0);
-      await f.pool.query(`INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,created_at) VALUES($1,$2,$3,$4,'Old',now()-interval '11 minutes')`,['f'.repeat(24),quiet,alice,randomUUID()]);
-      assert.equal((await activeStationRooms('FR','')).rooms.length,0);
-      await f.pool.query(`UPDATE station_chat_messages SET created_at=now() WHERE id=$1`,['f'.repeat(24)]);
-      assert.equal((await activeStationRooms('fr','')).rooms.length,1);
-      const {roomPage,sendRoomMessage}=await import('../src/services/station-live-chat');
-      await f.pool.query(`UPDATE station_chat_messages SET created_at=now()-interval '25 hours' WHERE id=$1`,['f'.repeat(24)]);
-      assert.equal((await roomPage(quiet,'')).messages.length,0,'expired messages are never served while cleanup catches up');
-      await f.pool.query(`INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,created_at) SELECT md5('retention-'||i),$1,$2,md5('client-'||i)::uuid,'History '||i,now()-interval '1 hour'+i*interval '1 second' FROM generate_series(1,205) i`,[quiet,alice]);
-      await sendRoomMessage(quiet,alice,{content:'Fresh message',clientId:randomUUID(),messageType:'text'});
-      assert.equal(Number((await f.pool.query('SELECT count(*) FROM station_chat_messages WHERE station_id=$1',[quiet])).rows[0].count),200,'each write enforces the bounded room history');
-      await f.pool.query('DELETE FROM stations WHERE id=$1',[quiet]);
+    afterEach(async () => {
+      const { closePostgres } = await import("../src/postgres-runtime");
+      await closePostgres();
+    });
+    test("retained 11-minute and 23-hour conversations remain discoverable without presence", async () => {
+      const { activeStationRooms } = await import("../src/services/station-chat-home");
+      const quiet = "e".repeat(24), oldMessage = "f".repeat(24);
+      await f.pool.query(`INSERT INTO stations(id,station_uuid,name,slug,url,country,country_code,is_list_visible) VALUES($1,$1,'FR quiet','fr-quiet','https://radio.test/fr','France','FR',true)`, [quiet]);
+      await f.pool.query(`INSERT INTO station_chat_sessions(token_hash,station_id,user_id,identity_id,connected,expires_at) VALUES('fr',$1,$2,$2,true,now()+interval '1 hour')`, [quiet,alice]);
+      assert.equal((await activeStationRooms("France", "")).rooms.length, 0, "presence alone does not create a conversation");
+      await f.pool.query("DELETE FROM station_chat_sessions WHERE station_id=$1", [quiet]);
+      await f.pool.query(`INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,created_at) VALUES($1,$2,$3,$4,'Retained conversation',now()-interval '11 minutes')`, [oldMessage,quiet,alice,randomUUID()]);
+      let room = (await activeStationRooms("FR", "")).rooms[0];
+      assert.equal(room.station._id, quiet);
+      assert.equal(room.count, 0);
+      assert.deepEqual(room.participants, [], "retained history never invents online avatars");
+      assert.deepEqual(room.messages, [], "a real room does not bypass fail-closed snippet moderation");
+      await f.pool.query(`INSERT INTO station_chat_home_previews(message_id,decision,display_name,reviewed_content) VALUES($1,'approved','Alice','Retained conversation')`, [oldMessage]);
+      await f.pool.query(`UPDATE station_chat_messages SET created_at=now()-interval '23 hours' WHERE id=$1`, [oldMessage]);
+      room = (await activeStationRooms("FR", "")).rooms[0];
+      assert.equal(room.count, 0);
+      assert.equal(room.messages[0].content, "Retained conversation");
+      assert.equal((await activeStationRooms("Austria", "")).rooms.length, 0, "selected country is not filled with another country's chat");
+      assert.ok((await activeStationRooms("", "")).rooms.some(room => room.station._id === quiet), "Global includes retained conversations across countries");
+      await f.pool.query(`INSERT INTO station_chat_sessions(token_hash,station_id,identity_id,connected,expires_at) VALUES('fr-now',$1,'guest:current',true,now()+interval '1 hour')`, [quiet]);
+      assert.equal((await activeStationRooms("FR", "")).rooms[0].count, 1, "current presence is read independently of cached rank");
+      await f.pool.query("DELETE FROM station_chat_sessions WHERE station_id=$1", [quiet]);
+      assert.equal((await activeStationRooms("FR", "")).rooms[0].count, 0);
+      await f.pool.query(`UPDATE station_chat_messages SET created_at=now()-interval '25 hours' WHERE id=$1`, [oldMessage]);
+      assert.equal((await activeStationRooms("FR", "")).rooms.length, 0, "expired history is rechecked even during rank cache lifetime");
+      assert.equal((await activeStationRooms("", "")).rooms.some(room => room.station._id === quiet), false);
+      const { roomPage, sendRoomMessage } = await import("../src/services/station-live-chat");
+      assert.equal((await roomPage(quiet, "")).messages.length, 0, "expired messages are never served while cleanup catches up");
+      await f.pool.query(`INSERT INTO station_chat_sessions(token_hash,station_id,user_id,identity_id,connected,expires_at) VALUES('fr-write',$1,$2,$2,true,now()+interval '1 hour')`, [quiet,alice]);
+      await f.pool.query(`INSERT INTO station_chat_messages(id,station_id,user_id,client_id,content,created_at) SELECT md5('retention-'||i),$1,$2,md5('client-'||i)::uuid,'History '||i,now()-interval '1 hour'+i*interval '1 second' FROM generate_series(1,205) i`, [quiet,alice]);
+      await sendRoomMessage(quiet, alice, {content: "Fresh message", clientId: randomUUID(), messageType: "text"});
+      assert.equal(Number((await f.pool.query("SELECT count(*) FROM station_chat_messages WHERE station_id=$1", [quiet])).rows[0].count), 200, "each write enforces the bounded room history");
+      await f.pool.query("DELETE FROM stations WHERE id=$1", [quiet]);
     });
     test("identity dedup, country/global scope, moderation and privacy/report/block rules", async () => {
       const { activeStationRooms } =
@@ -131,8 +152,9 @@ describe(
         [station, message, bob, alice],
       );
       assert.equal(
-        (await activeStationRooms("Austria", "")).rooms[0].messages.length,
+        (await activeStationRooms("Austria", "")).rooms.length,
         0,
+        "a reported last message also removes the cached room",
       );
       await f.pool.query(
         `UPDATE station_chat_reports SET status='dismissed' WHERE id='report'`,

@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import type { CSSProperties, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams, useRoute } from 'wouter';
@@ -127,7 +128,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   // already has a synchronous slug-derived fallback, so the header/H1 render
   // immediately; only the station grid shows its own skeleton while it loads.
   void genreLoading;
-  const genreName = genre?.name || (slug ? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '') || '';
+  const genreName = genreDisplayName({ slug, name: genre?.name || (slug ? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '') }, language);
 
   return (
     <>

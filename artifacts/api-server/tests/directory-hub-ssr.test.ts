@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import assert from 'node:assert/strict';
 import { beforeEach, mock, test } from 'node:test';
 import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
@@ -73,7 +74,7 @@ for (const language of ACTIVE_SITEMAP_LANGUAGES) {
         assert.ok(list, 'The native genre directory is also machine-readable');
         assert.equal(list.numberOfItems, 2);
         assert.deepEqual(list.itemListElement, page.pageData.directoryGenres.map((genre: any, index: number) => ({
-          '@type': 'ListItem', position: index + 1, name: genre.name,
+          '@type': 'ListItem', position: index + 1, name: genreDisplayName(genre, language),
           url: `https://themegaradio.com${path}/${encodeURIComponent(genre.slug)}`,
         })));
         const collection = schemas.page.find((schema: any) => schema['@type'] === 'CollectionPage');
@@ -171,4 +172,15 @@ test('hub bounds, alias deduplication, safe slugs and name escaping preserve cur
     const html = renderer.generateHtmlBody({ pageType: 'genres', language: 'de', translations: {}, additionalData: { directoryGenres: genres } });
     assert.ok(html.includes('&lt;b&gt;Editor &amp; name&lt;/b&gt;')); assert.ok(!html.includes('<b>Editor'));
   } finally { genreRows = originalGenres; countryRows = originalCountries; }
+});
+
+
+test('translated genre names agree between SSR visible links and ItemList without changing slugs',()=>{
+ const additionalData={directoryGenres:[{slug:'news',name:'News'},{slug:'classical',name:'Classical'}]};
+ const body=renderer.generateHtmlBody({pageType:'genres',language:'tr',translations:{},additionalData,cleanPath:'/genres',urlTranslations:new Map()});
+ assert.ok(body.includes('Haberler'));assert.ok(body.includes('Klasik'));
+ assert.ok(body.includes('/news"'));assert.ok(body.includes('/classical"'));
+ const schema=renderer.generateStructuredData({},'tr',{},'/genres',undefined,new Map(),additionalData).page.find((s:any)=>s['@type']==='ItemList');
+ assert.deepEqual(schema.itemListElement.map((s:any)=>s.name),['Haberler','Klasik']);
+ assert.equal(additionalData.directoryGenres[0].name,'News','raw catalogue cache must not be rewritten');
 });

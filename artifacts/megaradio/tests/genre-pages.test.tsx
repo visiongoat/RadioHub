@@ -1,3 +1,4 @@
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -60,7 +61,7 @@ beforeEach(() => {
       total: fixture.empty ? 0 : 148, page: fixture.responsePage ?? page, pages: fixture.empty ? 0 : 10,
     }) };
     return { ok: true, json: async () => ({ data: fixture.empty ? [] : [{
-      _id: `${country}-${page}`, slug: 'jazz', name: `Genre ${country} ${page}`, stationCount: 3,
+      _id: `${country}-${page}`, slug: `fixture-${country}-${page}`, name: `Genre ${country} ${page}`, stationCount: 3,
     }], count: fixture.empty ? 0 : 270, totalPages: fixture.empty ? 0 : 10 }) };
   }));
   client = new QueryClient({ defaultOptions: { queries: {
@@ -129,6 +130,23 @@ describe('genre URL pagination', () => {
     act(() => { Object.defineProperty(window, 'innerWidth', { value: 1024 }); window.dispatchEvent(new Event('resize')); });
     await waitFor(() => expect(listCalls().at(-1)?.searchParams.get('limit')).toBe('27'));
     expect(listCalls().at(-1)?.searchParams.get('page')).toBe('1');
+  });
+
+  it.each([
+    ['tr', 'Caz', 'jazz'], ['tr', 'Klasik', 'classical'],
+    ['de', 'Klassik', 'classical'], ['de', 'Nachrichten', 'news'],
+    ['tr', 'Jazz', 'Jazz'], ['tr', 'jazz', 'jazz'], ['tr', 'Rare Style', 'Rare Style'],
+  ])('searches the canonical catalogue for %s displayed name %s', async (language, input, expected) => {
+    fixture.language = language;
+    visit(`/${language}/genres?page=3`);
+    render(listing());
+    await screen.findByRole('heading', { name: 'Genre Austria 3' });
+    fireEvent.change(screen.getByPlaceholderText('search_genre'), { target: { value: input } });
+    await waitFor(() => expect(listCalls().at(-1)?.searchParams.get('search')).toBe(expected));
+    expect(listCalls().at(-1)?.searchParams.get('page')).toBe('1');
+    expect(screen.getByPlaceholderText('search_genre')).toHaveValue(input);
+    expect(client.getQueryCache().findAll({ queryKey: ['/api/genres/precomputed'] })
+      .some(query => query.queryKey[2] === expected)).toBe(true);
   });
 
   it('does not reset an explicitly paginated new genre route', () => {
@@ -312,7 +330,7 @@ describe('genre detail and localized states', () => {
     const genresUrl = `/${code}${translateUrl('/genres', code)}`;
     visit(`${genresUrl}/jazz`); render(detail());
     const labels = getGenrePageLabels(code);
-    expect(await screen.findByRole('heading', { name: `Jazz ${labels.stations}` })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: `${genreDisplayName({slug:'jazz',name:'Jazz'},code)} ${labels.stations}` })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: labels.genres })).toHaveAttribute('href', genresUrl);
   });
 

@@ -1,3 +1,4 @@
+import { genreDisplayName, genreSearchQuery } from '@workspace/seo-shared/genre-localization';
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -52,20 +53,21 @@ export default function GenresPage({
   const { t, language, localeTranslations } = useTranslation();
   const labels = getGenrePageLabels(language, localeTranslations);
   const [searchQuery, setSearchQuery] = useState("");
+  const canonicalSearch = genreSearchQuery(searchQuery, language);
   const isMobile = useGenreMobileViewport();
   const limit = isMobile ? 9 : 27;
   const countryParam = getPreferredCountryCode(selectedCountry) || 'global';
-  const { currentPage, changePage: handlePageChange } = useGenrePagination(JSON.stringify([countryParam, searchQuery, limit]));
+  const { currentPage, changePage: handlePageChange } = useGenrePagination(JSON.stringify([countryParam, canonicalSearch, limit]));
 
   // Fetch genres from 7-day cache (precomputed endpoint)
   const { data: genresResponse, isLoading: genresLoading, isError: genresError, refetch: retryGenres, isFetching: genresFetching } = useQuery({
-    queryKey: ['/api/genres/precomputed', currentPage, searchQuery, countryParam, limit],
+    queryKey: ['/api/genres/precomputed', currentPage, canonicalSearch, countryParam, limit],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         countryName: countryParam,
         page: currentPage.toString(),
         limit: String(limit),
-        search: searchQuery || ''
+        search: canonicalSearch || ''
       });
       
       const response = await fetch(`/api/genres/precomputed?${params}`, { signal });
@@ -216,7 +218,7 @@ export default function GenresPage({
                             color: '#FFFFFFB2'
                           }}
                         >
-                          {genre.name}
+                          {genreDisplayName(genre, language)}
                         </Link>
                       </SwiperSlide>
                     ))}
@@ -239,7 +241,7 @@ export default function GenresPage({
                           color: '#FFFFFFB2'
                         }}
                       >
-                        {genre.name}
+                        {genreDisplayName(genre, language)}
                       </Link>
                     ))}
                   </div>
@@ -275,7 +277,7 @@ export default function GenresPage({
                 className="flex flex-col justify-center rounded-lg bg-[#2F2F2F] p-5 hover:bg-[#3F3F3F] transition-colors"
               >
                 <h2 className="text-[24px] font-medium capitalize">
-                  {genre.name}
+                  {genreDisplayName(genre, language)}
                 </h2>
                 <p className="text-[15px] font-light">
                   {(genre.total_stations || genre.stationCount || 0).toLocaleString()} {labels.stations}

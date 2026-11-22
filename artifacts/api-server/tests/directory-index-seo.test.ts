@@ -83,14 +83,16 @@ test('blank/key-placeholder/exact English seed values use localized copy, custom
   }
 });
 
-test('genre/country details retain their existing specific localized metadata', async () => {
+test('genre/country details use localized genre names in specific metadata', async () => {
   const { buildGenreSeo } = await import('@workspace/seo-shared/genre-seo-templates');
   const { buildCountrySeo } = await import('@workspace/seo-shared/region-seo-templates');
+  const jazzNames: Record<string, string> = { en:'Jazz', de:'Jazz', fr:'Jazz', es:'Jazz', it:'Jazz', pt:'Jazz',
+    tr:'Caz', ru:'Джаз', ar:'جاز', zh:'爵士', ja:'ジャズ', ko:'재즈', hi:'जैज़', he:'ג׳אז' };
   for (const language of languages) {
     const genre = await renderer.generateEnhancedSeoTags('genres',language,{},'/genres/jazz',origin,undefined,{genreName:'Jazz'});
     const country = await renderer.generateEnhancedSeoTags('regions',language,{},'/regions/germany',origin,undefined,{country:'Germany'});
-    assert.equal(genre.title,buildGenreSeo('Jazz',language,{}).title);
-    assert.equal(genre.description,buildGenreSeo('Jazz',language,{}).description);
+    assert.equal(genre.title,buildGenreSeo(jazzNames[language],language,{}).title);
+    assert.equal(genre.description,buildGenreSeo(jazzNames[language],language,{}).description);
     assert.equal(country.title,buildCountrySeo('Germany',language,{}).title);
     assert.equal(country.description,buildCountrySeo('Germany',language,{}).description);
   }

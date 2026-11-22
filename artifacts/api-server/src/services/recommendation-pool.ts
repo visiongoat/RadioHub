@@ -28,12 +28,18 @@ export async function getRecommendationPool(scope: ReturnType<typeof recommendat
       conditions.push(`EXISTS(SELECT 1 FROM station_genres sg WHERE sg.station_id=s.id AND sg.genre_slug=ANY($${values.length}::text[]))`);
     }
     const query = {
-      text: `SELECT s.id,s.name,s.slug,s.url,s.url_resolved,s.homepage,s.favicon,s.country,s.country_code,s.state,
+      // Source contains large editorial JSON. Rank only compact native columns
+      // before projecting those JSON fields for at most one hundred stations.
+      text: `WITH candidates AS MATERIALIZED (
+        SELECT s.id,s.votes,s.click_count FROM stations s WHERE ${conditions.join(' AND ')}
+        ORDER BY s.votes DESC NULLS LAST,s.click_count DESC NULLS LAST,s.id LIMIT 100
+      )
+        SELECT s.id,s.name,s.slug,s.url,s.url_resolved,s.homepage,s.favicon,s.country,s.country_code,s.state,
         s.language,s.tags_raw,s.votes,s.click_count,s.codec,s.bitrate,s.logo_assets,s.has_logo,s.last_check_ok,
         s.is_list_visible,s.visibility_expires_at,s.availability_outcome,s.availability_checked_at,s.no_index,
         jsonb_build_object('genre',s.source->'genre','localImagePath',s.source->'localImagePath') source
-        FROM stations s WHERE ${conditions.join(' AND ')}
-        ORDER BY s.votes DESC NULLS LAST,s.click_count DESC NULLS LAST,s.id LIMIT 100`,
+        FROM candidates c JOIN stations s ON s.id=c.id
+        ORDER BY c.votes DESC NULLS LAST,c.click_count DESC NULLS LAST,c.id`,
       values,
       query_timeout: 8000,
     };

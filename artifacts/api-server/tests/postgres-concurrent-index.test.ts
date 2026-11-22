@@ -65,3 +65,39 @@ test('invalid completion and cancellation fail closed and restore the bounded lo
     assert.deepEqual(f.calls.at(-1)?.values, ['60s']);
   }
 });
+
+const orderSql = readFileSync(new URL('../../../lib/db/migrations/0072_recommendation_pool_order.sql', import.meta.url), 'utf8');
+const orderSpec = parseConcurrentIndexMigration(orderSql)!;
+const orderDefinition = { valid:true,ready:true,correct_table:true,method:'btree',unique:false,keys:3,attributes:3,
+  expression:null,no_predicate:true,key_options:[1,1,0],key_columns:['votes','click_count','id'],
+  default_operator_classes:true,column_collations:true };
+test('only the reviewed stable recommendation order can use the concurrent runner', () => {
+  assert.equal(orderSpec.name,'stations_recommendation_order_idx');
+  for(const sql of [orderSql.replace('votes DESC NULLS LAST','votes DESC'),
+    orderSql.replace('click_count DESC','click_count ASC'),orderSql+'DROP TABLE stations;']) {
+    assert.throws(()=>parseConcurrentIndexMigration(sql),/Unsupported concurrent-index/);
+  }
+});
+test('recommendation order resumes a completed index and repairs only its matching invalid definition', async()=>{
+  const existing=fixture(orderDefinition);await applyConcurrentIndexMigration(existing.client,orderSpec);
+  assert.ok(!existing.calls.some(call=>/^(CREATE|DROP)/.test(call.sql)));
+  const invalid=fixture({...orderDefinition,valid:false,ready:false},orderDefinition);
+  await applyConcurrentIndexMigration(invalid.client,orderSpec);
+  assert.equal(invalid.calls.filter(call=>call.sql.startsWith('DROP INDEX CONCURRENTLY')).length,1);
+  assert.equal(invalid.calls.filter(call=>call.sql.startsWith('CREATE INDEX CONCURRENTLY')).length,1);
+  assert.ok(!invalid.calls.some(call=>/^(BEGIN|COMMIT)/.test(call.sql)));
+});
+test('recommendation order refuses wrong null order, collation, included columns and wrong ownership', async()=>{
+  for(const change of [{correct_table:false},{method:'gin'},{unique:true},{keys:2},{attributes:4},
+    {expression:'lower(name)'},{no_predicate:false},{key_options:[3,1,0]},
+    {key_columns:['votes','id','click_count']},{default_operator_classes:false},{column_collations:false}]){
+    const f=fixture({...orderDefinition,...change});
+    await assert.rejects(applyConcurrentIndexMigration(f.client,orderSpec),/unexpected definition/);
+    assert.ok(!f.calls.some(call=>/^(CREATE|DROP)/.test(call.sql)));
+  }
+});
+test('recommendation order cancellation never records success and restores the lock deadline',async()=>{
+  const f=fixture(null,orderDefinition,true);
+  await assert.rejects(applyConcurrentIndexMigration(f.client,orderSpec),/cancelled build/);
+  assert.deepEqual(f.calls.at(-1)?.values,['60s']);
+});
