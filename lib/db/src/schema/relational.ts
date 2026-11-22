@@ -357,6 +357,19 @@ export const authTokens = pgTable(
   ],
 );
 
+// Only hashes are stored; callback state and mobile handoffs are consumed atomically.
+export const facebookOAuthStates = pgTable('facebook_oauth_states', {
+  stateHash: text('state_hash').primaryKey(),
+  expiresAt: timestamp('expires_at', {withTimezone:true}).notNull(),
+}, table => [index('facebook_oauth_states_expiry').on(table.expiresAt)]);
+
+export const oauthMobileHandoffs = pgTable('oauth_mobile_handoffs', {
+  codeHash: text('code_hash').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, {onDelete:'cascade'}),
+  challenge: text('challenge').notNull(),
+  expiresAt: timestamp('expires_at', {withTimezone:true}).notNull(),
+}, table => [index('oauth_mobile_handoffs_expiry').on(table.expiresAt)]);
+
 export const listeningHistory = pgTable(
   "listening_history",
   {

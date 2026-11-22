@@ -1,7 +1,6 @@
 import {googleIdentity, canLinkGoogleAccount} from './google-identity-policy';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import { Strategy as FacebookStrategy } from 'passport-facebook';
 import { Strategy as LocalStrategy } from 'passport-local';
 import bcrypt from 'bcrypt';
 import { googleOAuthCallbackUrl } from './oauth-redirect';
@@ -158,80 +157,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         }
     }));
 }
-// Facebook OAuth Strategy
-if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
-    passport.use(new FacebookStrategy({
-        clientID: process.env.FACEBOOK_APP_ID,
-        clientSecret: process.env.FACEBOOK_APP_SECRET,
-        callbackURL: "/api/auth/facebook/callback",
-        profileFields: ['id', 'displayName', 'photos', 'email']
-    }, async (accessToken, refreshToken, profile, done) => {
-        try {
-            console.log('🔐 Facebook OAuth callback received for:', profile.displayName, profile.emails?.[0]?.value);
-            console.log('🔐 Facebook OAuth profile photo captured:', profile.photos?.[0]?.value ? 'Yes' : 'No');
-            // Check if user already exists with this Facebook ID
-            let user = await findIdentity({ facebookId: profile.id });
-            if (user) {
-                user.lastLoginAt = new Date();
-                if (!user.fullName && profile.displayName) {
-                    user.fullName = profile.displayName;
-                }
-                await saveIdentity(user, { lastLoginAt: user.lastLoginAt, fullName: user.fullName });
-                return done(null, user);
-            }
-            // Check if user exists with same email
-            user = await findIdentity({ email: profile.emails?.[0]?.value });
-            if (user) {
-                user.facebookId = profile.id;
-                user.lastLoginAt = new Date();
-                if (!user.fullName && profile.displayName) {
-                    user.fullName = profile.displayName;
-                }
-                await saveIdentity(user, {
-                    facebookId: user.facebookId, lastLoginAt: user.lastLoginAt, fullName: user.fullName,
-                });
-                return done(null, user);
-            }
-            // Generate slug for new Facebook user
-            const generateSlugForOAuth = (displayName: string, email: string): string => {
-                let slugSource = displayName || email.split('@')[0];
-                return slugSource
-                    .toLowerCase()
-                    .replace(/[^\w\s-]/g, '')
-                    .replace(/\s+/g, '-')
-                    .replace(/-+/g, '-')
-                    .trim()
-                    .replace(/^-+|-+$/g, '');
-            };
-            const baseSlug = generateSlugForOAuth(profile.displayName, profile.emails?.[0]?.value || '');
-            let userSlug = baseSlug;
-            let counter = 1;
-            // Check for slug uniqueness
-            while (await slugExists(userSlug)) {
-                userSlug = `${baseSlug}-${counter}`;
-                counter++;
-            }
-            const fbEmail = profile.emails?.[0]?.value || `facebook-${profile.id}@oauth.invalid`;
-            const fbFullName = profile.displayName || fbEmail.split('@')[0] || '';
-            const newUser = await createIdentity({
-                facebookId: profile.id,
-                email: fbEmail,
-                fullName: fbFullName,
-                avatar: profile.photos?.[0]?.value,
-                username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                slug: userSlug, // Add automatic slug for Facebook users
-                passwordHash: '',
-                emailVerified: true,
-                lastLoginAt: new Date()
-            });
-            console.log(`✅ New Facebook user created with slug: "${userSlug}" (${newUser.email})`);
-            return done(null, newUser);
-        }
-        catch (error) {
-            return done(error);
-        }
-    }));
-}
+// Facebook uses the session-bound flow in routes/facebook-auth-routes.ts.
 if (process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID) {
     console.log('🍎 Apple Sign-In configured (web OAuth flow via jose JWT)');
 }
