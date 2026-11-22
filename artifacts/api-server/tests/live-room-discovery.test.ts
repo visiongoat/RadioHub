@@ -80,7 +80,9 @@ describe(
       let room = (await activeStationRooms("FR", "")).rooms[0];
       assert.equal(room.station._id, quiet);
       assert.equal(room.count, 0);
-      assert.deepEqual(room.participants, [], "retained history never invents online avatars");
+      assert.equal(room.activeCount,0,"retained authors never claim live presence");
+      assert.deepEqual(room.participants.map((p:any)=>p._id),[alice],"retained public author remains visible without a session");
+      assert.equal(room.participantCount,1);
       assert.deepEqual(room.messages, [], "a real room does not bypass fail-closed snippet moderation");
       await f.pool.query(`INSERT INTO station_chat_home_previews(message_id,decision,display_name,reviewed_content) VALUES($1,'approved','Alice','Retained conversation')`, [oldMessage]);
       await f.pool.query(`UPDATE station_chat_messages SET created_at=now()-interval '23 hours' WHERE id=$1`, [oldMessage]);
@@ -137,7 +139,9 @@ describe(
       assert.equal((await activeStationRooms("AT",bob)).rooms[0].participants.length,0,'reverse direct block hides followed identity');
       await f.pool.query('DELETE FROM direct_chat_blocks WHERE user_id=$1 AND blocked_user_id=$2',[alice,bob]);
       await f.pool.query("UPDATE station_chat_sessions SET expires_at=now()-interval '1 second' WHERE user_id=$1",[alice]);
-      assert.equal((await activeStationRooms("AT",bob)).rooms[0].participants.length,0,'expired presence cannot claim a followed person is here');
+      const retainedAuthorRoom=(await activeStationRooms("AT",bob)).rooms[0];
+      assert.equal(retainedAuthorRoom.participants.length,1,'expired presence does not remove retained public author');
+      assert.equal(retainedAuthorRoom.activeCount,1,'only the still-connected guest counts as online');
       await f.pool.query("UPDATE station_chat_sessions SET expires_at=now()+interval '1 hour' WHERE user_id=$1",[alice]);
 
       await f.pool.query(
