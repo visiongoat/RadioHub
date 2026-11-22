@@ -15,7 +15,7 @@ async function findIdentity(input: {
 }
 async function saveIdentity(user: any, patch: Record<string, any>): Promise<any> {
     Object.assign(user, patch);
-    await pgUpdateUser(String(user._id), patch);
+    Object.assign(user, await pgUpdateUser(String(user._id), patch));
     return user;
 }
 async function slugExists(slug: string): Promise<boolean> {
@@ -143,7 +143,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
                 email: emailForName,
                 fullName: derivedFullName,
                 avatar: profile.photos?.[0]?.value,
-                username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 slug: userSlug, // Add automatic slug for Google users
                 passwordHash: '', // No password for OAuth users
                 emailVerified: true, // Google accounts are pre-verified
@@ -218,7 +217,6 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
                 email: fbEmail,
                 fullName: fbFullName,
                 avatar: profile.photos?.[0]?.value,
-                username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 slug: userSlug, // Add automatic slug for Facebook users
                 passwordHash: '',
                 emailVerified: true,

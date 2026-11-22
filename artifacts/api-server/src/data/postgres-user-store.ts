@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 import { getPostgresPool } from "../postgres-runtime";
+import { isLegacyGeneratedHandle, needsGeneratedHandle, normalizePublicUserSearch } from '../utils/user-handle';
+import { allocateUserHandle, lockUserHandles, resolveLegacyUserHandle, userHandleTaken } from './user-handle-store';
 
 export const userStore: string = "postgres";
 
 export interface UserWriteInput {
   [key: string]: unknown;
   id?: string;
-  username: string;
+  username?: string;
   email: string;
   passwordHash?: string | null;
   fullName?: string | null;
@@ -79,8 +81,10 @@ export async function pgFindUserById(id: string): Promise<any | null> {
 }
 
 export async function pgFindUserByIdOrSlug(value: string): Promise<any | null> {
-  const result = await getPostgresPool().query(`${userSelect} WHERE u.id=$1 OR u.slug=$1 LIMIT 1`, [value]);
-  return shape(result.rows[0]);
+  const result = await getPostgresPool().query(`${userSelect} WHERE u.id=$1 OR u.slug=$1 OR u.username=$1 LIMIT 1`, [value]);
+  if (result.rows[0]) return shape(result.rows[0]);
+  const legacyId = await resolveLegacyUserHandle(value);
+  return legacyId ? pgFindUserById(legacyId) : null;
 }
 
 export async function pgFindUserByEmail(email: string): Promise<any | null> {
@@ -230,26 +234,51 @@ export async function pgCreateUser(input: UserWriteInput): Promise<any> {
   const id = input.id || newPublicUserId();
   const now = new Date();
   const { source: inputSource, id: _inputId, ...fields } = input;
-  const source = { ...(inputSource || {}), ...fields, _id: id };
-  const result = await getPostgresPool().query(
+  // Aliases belong to the allocator, never to a supplied profile/source payload.
+  const source: Record<string, any> = { ...(inputSource || {}), ...fields, _id: id };
+  delete source.profileAliases;
+  const client = await getPostgresPool().connect();
+  try {
+    await client.query('BEGIN');
+    await lockUserHandles(client);
+    const username = needsGeneratedHandle(input.username)
+      ? await allocateUserHandle(client, input.fullName, id) : input.username!;
+    if (!needsGeneratedHandle(input.username) && await userHandleTaken(client, username, id)) {
+      throw Object.assign(new Error('Username is already in use'), { code: '23505' });
+    }
+    let slug = input.slug || username;
+    if (slug !== username && await userHandleTaken(client, slug, id)) slug = username;
+    source.username = username;
+    source.slug = slug;
+    const result = await client.query(
     `INSERT INTO users(id,username,email,password_hash,full_name,slug,avatar,role,status,
        email_verified,is_public_profile,google_id,facebook_id,apple_id,preferences,stats,source,created_at,updated_at,bio,permissions,last_login_at)
      VALUES (${Array.from({ length: 22 }, (_, index) => `$${index + 1}`).join(",")}) RETURNING *`,
-    [id, input.username, input.email.toLowerCase().trim(), input.passwordHash || null,
-      input.fullName || input.username || "User", input.slug || null, input.avatar || null, input.role || "user",
+    [id, username, input.email.toLowerCase().trim(), input.passwordHash || null,
+      input.fullName || username || "User", slug, input.avatar || null, input.role || "user",
       input.status || "active", !!input.emailVerified, input.isPublicProfile !== false,
       input.googleId || null, input.facebookId || null, input.appleId || null,
       JSON.stringify(input.preferences || {}), JSON.stringify(input.stats || {}),
       JSON.stringify(source), now, now, input.bio || null,
       JSON.stringify(input.permissions || {}), input.lastLoginAt || null],
   );
-  return shape(result.rows[0]);
+    await client.query('COMMIT');
+    return shape(result.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }
 
 export async function pgUpdateUser(id: string, patch: Record<string, any>): Promise<any | null> {
   const client = await getPostgresPool().connect();
   try {
     await client.query("BEGIN");
+    // Decide before locking the row, so handle allocation and concurrent profile
+    // edits never acquire their two locks in opposite order.
+    const identity = await client.query('SELECT username FROM users WHERE id=$1', [id]);
+    const writesHandle = patch.username !== undefined || needsGeneratedHandle(identity.rows[0]?.username);
+    if (writesHandle) await lockUserHandles(client);
     // Serialize the read/merge/write, including JSON preferences and source.
     // Lock only users: a nullable LEFT JOIN subscription cannot be FOR UPDATE.
     const locked = await client.query("SELECT * FROM users WHERE id=$1 FOR UPDATE", [id]);
@@ -260,12 +289,26 @@ export async function pgUpdateUser(id: string, patch: Record<string, any>): Prom
     }
     // Ignore undefined (an omitted field), but retain explicit null/removals.
     const changes = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    delete changes.profileAliases;
+    delete changes.source;
     if (changes.notificationSettings && typeof changes.notificationSettings === 'object') {
       changes.notificationSettings = { ...(current.notificationSettings || {}), ...changes.notificationSettings };
     }
     const next = { ...current, ...changes, preferences: changes.preferences
       ? { ...(current.preferences || {}), ...changes.preferences } : current.preferences };
     const source = { ...(locked.rows[0].source || {}), ...changes, _id: id };
+    if (writesHandle) {
+      next.username = needsGeneratedHandle(next.username)
+        ? await allocateUserHandle(client, next.fullName, id) : next.username;
+      if (next.username !== current.username && await userHandleTaken(client, next.username, id)) {
+        throw Object.assign(new Error('Username is already in use'), { code: '23505' });
+      }
+      source.username = next.username;
+      if (isLegacyGeneratedHandle(current.username) && current.username !== next.username) {
+        const aliases = Array.isArray(source.profileAliases) ? source.profileAliases.filter(isLegacyGeneratedHandle) : [];
+        source.profileAliases = [...new Set([...aliases, current.username])];
+      }
+    }
     const result = await client.query(
     `UPDATE users SET username=$2,email=$3,password_hash=$4,full_name=$5,slug=$6,bio=$7,
        avatar=$8,role=$9,status=$10,email_verified=$11,is_public_profile=$12,
@@ -359,8 +402,19 @@ export async function pgListUsers(options: {
   if (options.status) conditions.push(`u.status=${bind(options.status)}`);
   if (options.role) conditions.push(`u.role=${bind(options.role)}`);
   if (options.query && options.query.length >= 2) {
-    const parameter = bind(options.query);
-    conditions.push(`(u.username ILIKE '%'||${parameter}||'%' OR u.full_name ILIKE '%'||${parameter}||'%' OR u.email ILIKE '%'||${parameter}||'%')`);
+    if (options.publicOnly) {
+      const term = normalizePublicUserSearch(options.query);
+      const escapeLike = (value: string) => '%'+value.replace(/[\\%_]/g, '\\$&')+'%';
+      const parameter = bind(escapeLike(term));
+      const tokens = bind(term.split(/[\s_.-]+/).filter(Boolean).slice(0, 10).map(escapeLike));
+      conditions.push(`(translate(lower(COALESCE(u.username,'')),'çğıöşü','cgiosu') LIKE ${parameter}
+        OR translate(lower(COALESCE(u.full_name,'')),'çğıöşü','cgiosu') LIKE ${parameter}
+        OR (cardinality(${tokens}::text[])>1 AND translate(lower(COALESCE(u.full_name,'')),'çğıöşü','cgiosu') LIKE ALL(${tokens}::text[]))
+        OR lower(u.email) LIKE ${parameter})`);
+    } else {
+      const parameter = bind(options.query);
+      conditions.push(`(u.username ILIKE '%'||${parameter}||'%' OR u.full_name ILIKE '%'||${parameter}||'%' OR u.email ILIKE '%'||${parameter}||'%')`);
+    }
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const order = options.sortBy === "oldest" ? "u.created_at ASC"

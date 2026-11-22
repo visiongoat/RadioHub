@@ -8,6 +8,7 @@ const ownerId = '507f1f77bcf86cd799439011';
 const otherId = '507f1f77bcf86cd799439012';
 let users: Map<string, any>;
 const writes: Array<{ id: string; patch: any }> = [];
+const signups: any[] = [];
 const invalidations: string[] = [];
 const discoveryQueries: Record<string, any>[] = [];
 let discoveryUsers: Record<string, any>[] = [];
@@ -18,6 +19,7 @@ let deletedKeys: string[] = [];
 let invalidImage = false;
 let uploadFailure = false;
 let resetAvailable = false;
+let repairedHandle: string | null = null;
 const source = (id = ownerId) => ({ _id: id, id, username: id === ownerId ? 'listener' : 'other', fullName: 'Listener',
   email: id === ownerId ? 'owner@example.test' : 'other@example.test', emailVerified: true, status: 'active',
   followersCount: 0, followingCount: 0, preferences: { language: 'de', unrelated: true }, isPublicProfile: true,
@@ -37,7 +39,9 @@ mock.module('../src/data/auth-token-store', { namedExports: {
   revokeAuthToken: async () => { await new Promise(r => setTimeout(r, 8)); if (revokeFails) throw new Error('revoke-failed'); revokeFinished = true; },
 } });
 mock.module('../src/data/postgres-user-store', { namedExports: {
-  userStore: 'postgres', newPublicUserId: () => ownerId, pgCreateUser: async () => {}, pgFindUserById: findUser,
+  userStore: 'postgres', newPublicUserId: () => ownerId, pgCreateUser: async (input: any) => {
+    signups.push(input); return { ...input, _id: ownerId, username: input.username || 'server_allocated_name' };
+  }, pgFindUserById: findUser,
   pgFindUserByEmail: async (email: string) => [...users.values()].find(u => u.email.toLowerCase() === email.toLowerCase()) || null,
   pgFindUserByIdentity: async () => null, pgFindUserByResetToken: async () => resetAvailable ? source() : null,
   pgResetUserPassword: async () => { if (!resetAvailable) return false; resetAvailable = false; return true; },
@@ -53,7 +57,7 @@ mock.module('../src/data/postgres-user-store', { namedExports: {
     if (databaseFails) throw new Error('update-db');
     const previous = users.get(id); if (!previous) return null;
     writes.push({ id, patch });
-    const next = { ...previous, ...patch, preferences: { ...previous.preferences, ...patch.preferences },
+    const next = { ...previous, ...patch, ...(repairedHandle ? { username: repairedHandle } : {}), preferences: { ...previous.preferences, ...patch.preferences },
       notificationSettings: { ...previous.notificationSettings, ...patch.notificationSettings } };
     users.set(id, next); return next;
   },
@@ -97,11 +101,43 @@ beforeEach(() => {
   discoveryQueries.length = 0; discoveryUsers = [];
   databaseFails = false; revokeFails = false; revokeFinished = false; deletedKeys = []; invalidImage = false; uploadFailure = false;
   resetAvailable = false;
+  repairedHandle = null;
+  signups.length = 0;
   process.env.AWS_BUCKET_NAME = 'fixture-bucket'; process.env.AWS_REGION = 'eu-north-1';
 });
 async function request(path: string, method = 'GET', body?: any, user: string | null = ownerId, extra = {}) {
   return fetch(`${base}${path}`, { method, headers: { ...(user ? { 'x-fixture-user': user } : {}), 'content-type': 'application/json', ...extra }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
+
+test('signup accepts the public name without a client-generated username and returns the server handle', async () => {
+  const response = await request('/api/auth/signup', 'POST', { fullName: 'Şahin Yoğurtcu', email: 'new@example.test', password: 'fixture-password' }, null);
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).user.username, 'server_allocated_name');
+  assert.equal(signups.length, 1); assert.equal(signups[0].username, undefined);
+  assert.equal(signups[0].fullName, 'Şahin Yoğurtcu');
+});
+
+test('signup preserves a chosen username and rejects invalid optional username or missing public name', async () => {
+  const input = { fullName: 'Şahin Yoğurtcu', username: 'chosen.name', email: 'new@example.test', password: 'fixture-password' };
+  const response = await request('/api/auth/signup', 'POST', input, null);
+  assert.equal(response.status, 201); assert.equal((await response.json()).user.username, 'chosen.name');
+  for (const patch of [{ username: {} }, { username: 'ab' }, { username: 'unsafe@name' }, { fullName: '   ' }]) {
+    assert.equal((await request('/api/auth/signup', 'POST', { ...input, ...patch }, null)).status, 400);
+  }
+  assert.equal(signups.length, 1);
+});
+
+test('an existing authenticated session receives the repaired server handle before auth/me responds', async () => {
+  users.get(ownerId).username = 'user_1755000000000_abc123456';
+  repairedHandle = 'sahin_yogurtcu';
+  const response = await request('/api/auth/me');
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.user._id, ownerId); assert.equal(body.user.username, repairedHandle);
+  assert.equal(writes.length, 1); assert.deepEqual(writes[0], { id: ownerId, patch: {} });
+  await request('/api/auth/me');
+  assert.equal(writes.length, 1, 'the canonical handle does not generate repeated writes');
+});
 
 for (const [path, sortBy] of [
   ['/api/users/search', 'newest'],
