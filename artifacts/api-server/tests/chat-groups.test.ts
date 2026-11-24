@@ -2,11 +2,12 @@ import {test,mock,after} from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 const actor='507f1f77bcf86cd799439011',peer='507f1f77bcf86cd799439012',group='507f1f77bcf86cd799439020';
-let messageRow:any=null;
+const pushCalls:any[]=[];let messageRow:any=null;let contextRows:any[]=[];let contextArgs:any[]=[],contextSQL='';
 let foundStation:any=null,listedMembers:any[]=[];
 let status='active',eligible=true,allow=true,actorRole='admin',createdBy=actor,targetActive=true;const queries:{sql:string;args:any[]}[]=[],events:any[]=[];
 const db={release(){},async query(sql:string,args:any[]=[]){queries.push({sql,args});let rows:any[]=[];
- if(sql.includes('FOR UPDATE OF g,m'))rows=allow?[{id:group,name:'Test group',genres:['jazz','rock'],role:actorRole,created_by:createdBy,status,left_at:status==='left'?'2026-11-10T10:00:00Z':null,joined_at:'2026-11-09T12:00:00Z'}]:[];
+ if(sql.startsWith('WITH context_target')){rows=contextRows;contextArgs=args;contextSQL=sql;}
+ else if(sql.includes('FOR UPDATE OF g,m'))rows=allow?[{id:group,name:'Test group',genres:['jazz','rock'],role:actorRole,created_by:createdBy,status,left_at:status==='left'?'2026-11-10T10:00:00Z':null,joined_at:'2026-11-09T12:00:00Z'}]:[];
  else if(sql.includes('AS user,m.role,m.status'))rows=listedMembers;
  else if(sql.startsWith('SELECT * FROM chat_group_messages WHERE id=$1'))rows=messageRow&&messageRow.id===args[0]&&messageRow.group_id===args[1]&&Date.parse(messageRow.created_at)>=Date.parse(args[2])&&!messageRow.hidden_for.includes(args[3])?[messageRow]:[];
  else if(sql.startsWith('UPDATE chat_group_messages SET hidden_for=')){messageRow.hidden_for.push(args[1]);}
@@ -22,7 +23,7 @@ mock.module(new URL('../src/data/postgres-user-store.ts',import.meta.url).href,{
 mock.module(new URL('../src/services/chat-service.ts',import.meta.url).href,{namedExports:{chatService:{broadcastToUsers:(ids:any,event:any)=>events.push({ids,event})}}});
 mock.module(new URL('../src/data/station-read-store.ts',import.meta.url).href,{namedExports:{getPublicStationByIdentifier:async()=>foundStation}});
 mock.module(new URL('../src/utils/logger.ts',import.meta.url).href,{namedExports:{logger:{error(){}}}});
-mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async()=>false}}});
+mock.module(new URL('../src/services/pushNotificationService.ts',import.meta.url).href,{namedExports:{PushNotificationService:{sendToUserAllChannels:async(...args:any[])=>{pushCalls.push(args);return false;}}}});
 mock.module('express-rate-limit',{namedExports:{rateLimit:()=>((_req:any,_res:any,next:any)=>next())}});
 mock.module(new URL('../src/services/group-music-catalog.ts',import.meta.url).href,{namedExports:{getCachedGroupMusicGenres:async()=>[{slug:'blues'},{slug:'classic-rock'},{slug:'arabesk'},{slug:'folk-music'}]}});
 const {registerChatGroupRoutes,groupInput}=await import('../src/routes/chat-group-routes');
@@ -152,4 +153,25 @@ test('group creation accepts the full picker catalog beyond home navigation genr
  assert.deepEqual(queries.filter(q=>q.sql.startsWith('INSERT INTO chat_groups')).at(-1)?.args[4],['folk','arabesk','folk-music']);
  const rejected=await post('',{name:'Example',memberIds:[peer],genres:['not-a-catalog-genre']});
  assert.equal(rejected.status,400);assert.equal((await rejected.json()).code,'GROUP_GENRES_INVALID');
+});
+
+
+test('group notification context keeps membership/cutoffs/hidden filters and rejects conflicting cursors',async()=>{
+ allow=true;status='active';const target='507f1f77bcf86cd799439042';contextRows=[{_id:target,content:'Exact group target',createdAt:'2026-11-09T14:00:00Z',_contextHasMore:true}];
+ let response=await fetch(base+'/'+group+'/messages?aroundMessageId='+target);assert.equal(response.status,200);let body:any=await response.json();assert.equal(body.targetFound,true);assert.equal(body.hasMore,true);assert.deepEqual(body.messages,[{_id:target,content:'Exact group target',createdAt:'2026-11-09T14:00:00Z'}]);
+ assert.deepEqual(queries.findLast(q=>q.sql.includes('read_at=GREATEST'))!.args,[group,actor,'2026-11-09T14:00:00Z']);assert.deepEqual(queries.findLast(q=>q.sql.includes("data->>'messageId'=ANY"))!.args,[actor,group,[target]]);
+ assert.deepEqual(contextArgs,[group,'2026-11-09T12:00:00Z',target,actor,null]);
+ const eligible=`m.group_id=$1 AND m.created_at>=$2 AND ($5::timestamptz IS NULL OR m.created_at<=$5) AND NOT ($4=ANY(m.hidden_for)) AND m.deleted_at IS NULL`;assert.equal(contextSQL.split(eligible).length-1,3,'anchor and both sides use exactly the same membership-window/hidden/deleted predicate');
+ const readQueries=()=>queries.filter(q=>q.sql.startsWith('UPDATE chat_group_members SET read_at')||q.sql.startsWith('UPDATE user_notifications SET is_read')).length;const readCount=readQueries();contextRows=[];body=await(await fetch(base+'/'+group+'/messages?aroundMessageId='+target)).json();assert.equal(body.targetFound,false);assert.deepEqual(body.messages,[]);assert.equal(readQueries(),readCount);
+ for(const query of ['aroundMessageId=bad','aroundMessageId='+target+'&before='+target,'aroundMessageId='+target+'&aroundMessageId='+target])assert.equal((await fetch(base+'/'+group+'/messages?'+query)).status,400);
+ status='left';await fetch(base+'/'+group+'/messages?aroundMessageId='+target);assert.equal(contextArgs[4],'2026-11-10T10:00:00Z');
+ status='invited';assert.equal((await fetch(base+'/'+group+'/messages?aroundMessageId='+target)).status,404);status='active';allow=false;assert.equal((await fetch(base+'/'+group+'/messages?aroundMessageId='+target)).status,404);allow=true;
+});
+
+
+test('group push and stored notification carry the same actual new message identity',async()=>{
+ allow=true;status='active';messageRow={id:group,from_user_id:actor,content:'Notification target',hidden_for:[],created_at:new Date().toISOString()};pushCalls.length=0;
+ const response=await post('/'+group+'/messages',{content:'Notification target'});assert.equal(response.status,200);const body:any=await response.json();await new Promise(resolve=>setImmediate(resolve));
+ const push=pushCalls.find(call=>call[1].data.type==='new_message');assert.ok(push);assert.equal(push[1].data.messageId,body.message._id);assert.equal(push[1].data.groupId,group);
+ const stored=queries.findLast(q=>q.sql.startsWith('WITH updated AS (UPDATE user_notifications'));assert.equal(JSON.parse(stored!.args[5]).messageId,body.message._id);
 });

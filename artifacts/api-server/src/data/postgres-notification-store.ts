@@ -96,12 +96,13 @@ export async function pgMarkAllNotificationsRead(userId: string): Promise<number
   return result.rowCount || 0;
 }
 
-export async function pgMarkConversationNotificationsRead(userId: string, fromUserId: string): Promise<number> {
+export async function pgMarkConversationNotificationsRead(userId: string, fromUserId: string, messageIds?:string[]): Promise<number> {
   const result = await getPostgresPool().query(
     `UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now())
      WHERE user_id=$1 AND from_user_id=$2 AND type='new_message' AND is_read=false
-       AND NOT EXISTS (SELECT 1 FROM direct_messages WHERE to_user_id=$1 AND from_user_id=$2 AND is_read=false AND deleted_at IS NULL AND NOT ($1=ANY(hidden_for)))`,
-    [userId, fromUserId],
+       AND (($3::text[] IS NULL AND NOT EXISTS (SELECT 1 FROM direct_messages WHERE to_user_id=$1 AND from_user_id=$2 AND is_read=false AND deleted_at IS NULL AND NOT ($1=ANY(hidden_for))))
+         OR ($3::text[] IS NOT NULL AND data->>'messageId'=ANY($3::text[]) AND EXISTS(SELECT 1 FROM direct_messages m WHERE m.id=user_notifications.data->>'messageId' AND m.to_user_id=$1 AND m.from_user_id=$2 AND m.is_read=true AND m.deleted_at IS NULL AND NOT ($1=ANY(m.hidden_for)))))`,
+    [userId, fromUserId, messageIds??null],
   );
   return result.rowCount || 0;
 }

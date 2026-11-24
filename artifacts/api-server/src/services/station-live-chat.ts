@@ -1,3 +1,4 @@
+import {messageContextSQL,messageContextRows} from '../data/chat-message-context';
 import {enqueueHomePreview} from './station-chat-home-moderation';
 import {hydrateRoomMentions,notifyRoomMentions} from './station-chat-mentions';
 import { createHash, randomBytes } from "node:crypto";
@@ -51,8 +52,15 @@ export async function roomPage(
   station: string,
   actor: string,
   before?: string,
+  aroundMessageId?: string,
 ) {
   const db = getPostgresPool();
+  if(aroundMessageId){
+    const eligible=`m.station_id=$1 AND m.created_at>now()-interval '24 hours' AND m.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM station_chat_blocks b WHERE b.user_id=$2 AND b.blocked_user_id=m.user_id)`;
+    const result=await db.query(messageContextSQL('station_chat_messages',messageSQL,eligible,'$3'),[station,actor,aroundMessageId]);
+    const context=messageContextRows(result.rows,aroundMessageId);
+    return {...context,messages:await hydrateRoomMentions(context.messages)};
+  }
   const rows = (
     await db.query(
       `${messageSQL} WHERE m.station_id=$1 AND m.created_at>now()-interval '24 hours' AND m.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM station_chat_blocks b WHERE b.user_id=$2 AND b.blocked_user_id=m.user_id) AND ($3='' OR (m.created_at,m.id)<(SELECT created_at,id FROM station_chat_messages WHERE id=$3 AND station_id=$1)) ORDER BY m.created_at DESC,m.id DESC LIMIT 51`,

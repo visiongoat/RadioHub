@@ -1,3 +1,4 @@
+import {messageContextSQL,messageContextRows} from '../data/chat-message-context';
 import {CacheManager} from '../cache';
 import {claimViewOnce,viewOnceId} from '../data/chat-view-once';
 import {newPublicUserId as notificationId} from '../data/postgres-user-store';
@@ -79,13 +80,23 @@ export function registerChatGroupRoutes(app:Express,requireAuth:RequestHandler){
  };
  const activeAudience=async(db:any,id:string)=>(await db.query("SELECT user_id FROM chat_group_members WHERE group_id=$1 AND status='active'",[id])).rows.map((r:any)=>r.user_id);
  register('get','/:id/messages',async(db,actor,req)=>{
-  const g=await member(db,actor,req.params.id,false,true),before=req.query.before;
+  const g=await member(db,actor,req.params.id,false,true),before=req.query.before,around=req.query.aroundMessageId;
+  if(around!==undefined&&(!idValid(around)||before!==undefined))throw fail(400,'Invalid message context');
   if(before!==undefined&&!idValid(before))throw fail(400,'Invalid cursor');
-  const rows=(await db.query(`${messageSelect('$4','$2')} WHERE m.group_id=$1 AND m.created_at>=$2 AND ($5::timestamptz IS NULL OR m.created_at<=$5) AND NOT ($4=ANY(m.hidden_for)) AND ($3='' OR (m.created_at,m.id)<(SELECT created_at,id FROM chat_group_messages WHERE id=$3 AND group_id=$1)) ORDER BY m.created_at DESC,m.id DESC LIMIT 51`,[g.id,g.joined_at,before||'',actor,g.left_at||null])).rows;
+  const rows=(await db.query(around?messageContextSQL('chat_group_messages',messageSelect('$4','$2'),`m.group_id=$1 AND m.created_at>=$2 AND ($5::timestamptz IS NULL OR m.created_at<=$5) AND NOT ($4=ANY(m.hidden_for)) AND m.deleted_at IS NULL`,'$3'):`${messageSelect('$4','$2')} WHERE m.group_id=$1 AND m.created_at>=$2 AND ($5::timestamptz IS NULL OR m.created_at<=$5) AND NOT ($4=ANY(m.hidden_for)) AND ($3='' OR (m.created_at,m.id)<(SELECT created_at,id FROM chat_group_messages WHERE id=$3 AND group_id=$1)) ORDER BY m.created_at DESC,m.id DESC LIMIT 51`,[g.id,g.joined_at,around||before||'',actor,g.left_at||null])).rows;
+  const context=around?messageContextRows(rows,around):null;
   const pins=(await db.query(`${messageSelect('$3','$2')} WHERE m.group_id=$1 AND m.created_at>=$2 AND ($4::timestamptz IS NULL OR m.created_at<=$4) AND NOT ($3=ANY(m.hidden_for)) AND m.deleted_at IS NULL AND m.pinned_at IS NOT NULL ORDER BY m.pinned_at DESC LIMIT 20`,[g.id,g.joined_at,actor,g.left_at||null])).rows;
-  await db.query("UPDATE chat_inbox_state SET marked_unread=false WHERE user_id=$1 AND kind='group' AND target_id=$2",[actor,g.id]);
-  await db.query("UPDATE chat_group_members SET read_at=now() WHERE group_id=$1 AND user_id=$2 AND status='active'",[g.id,actor]);await db.query("UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND data->>'groupId'=$2 AND type IN ('new_message','group_invitation')",[actor,g.id]);
-  return {messages:rows.slice(0,50).reverse(),hasMore:rows.length>50,pinnedMessages:pins};
+  if(!context||context.targetFound){
+   await db.query("UPDATE chat_inbox_state SET marked_unread=false WHERE user_id=$1 AND kind='group' AND target_id=$2",[actor,g.id]);
+   if(context){
+    const latest=context.messages.at(-1)?.createdAt;
+    if(latest)await db.query("UPDATE chat_group_members SET read_at=GREATEST(read_at,$3::timestamptz) WHERE group_id=$1 AND user_id=$2 AND status='active'",[g.id,actor,latest]);
+    await db.query("UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND data->>'groupId'=$2 AND type='new_message' AND data->>'messageId'=ANY($3::text[])",[actor,g.id,context.messages.map(message=>message._id)]);
+   }else{
+    await db.query("UPDATE chat_group_members SET read_at=now() WHERE group_id=$1 AND user_id=$2 AND status='active'",[g.id,actor]);await db.query("UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND data->>'groupId'=$2 AND type IN ('new_message','group_invitation')",[actor,g.id]);
+   }
+  }
+  return {messages:context?context.messages:rows.slice(0,50).reverse(),hasMore:context?context.hasMore:rows.length>50,...(context?{targetFound:context.targetFound}:{}),pinnedMessages:pins};
  });
  register('post','/:id/messages',async(db,actor,req)=>{
   const g=await member(db,actor,req.params.id);let {content,messageType='text',imageUrl,replyToId}=req.body||{};
@@ -98,7 +109,7 @@ export function registerChatGroupRoutes(app:Express,requireAuth:RequestHandler){
   const id=newPublicUserId();await db.query('INSERT INTO chat_group_messages(id,group_id,from_user_id,content,message_type,image_url,reply_to_id) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,g.id,actor,content,messageType,['gif','image'].includes(messageType)?imageUrl:null,replyToId||null]);
   const users=await activeAudience(db,g.id);if(viewOnceId(imageUrl))await claimViewOnce(db,actor,imageUrl,'group',g.id,id,users);const message=(await db.query(messageSelect()+' WHERE m.id=$1',[id,actor,g.joined_at])).rows[0];
   const muted=new Set((await db.query("SELECT user_id FROM chat_inbox_state WHERE kind='group' AND target_id=$1 AND muted",[g.id])).rows.map((r:any)=>r.user_id));
-  const sender=(await db.query("SELECT full_name,username,avatar,source->>'profileImageUrl' AS photo FROM users WHERE id=$1",[actor])).rows[0];const name=sender?.full_name||sender?.username||'MegaRadio';const preview=messageType==='image'?'📷 Fotoğraf':messageType==='gif'?'GIF':messageType==='station'?'Bir radyo paylaştı':content.slice(0,200);for(const userId of users.filter((id:string)=>id!==actor))await db.query(`WITH updated AS (UPDATE user_notifications SET from_user_id=$3,title=$4,message=$5,data=$6::jsonb,created_at=now() WHERE id=(SELECT id FROM user_notifications WHERE user_id=$2 AND type='new_message' AND data->>'groupId'=$7 AND is_read=false ORDER BY created_at DESC LIMIT 1) AND is_read=false RETURNING id) INSERT INTO user_notifications(id,user_id,from_user_id,type,title,message,data) SELECT $1,$2,$3,'new_message',$4,$5,$6::jsonb WHERE NOT EXISTS(SELECT 1 FROM updated)`,[notificationId(),userId,actor,g.name,`${name}: ${preview}`,JSON.stringify({screen:'group-chat',groupId:g.id,messageId:id,userAvatar:sender?.avatar||sender?.photo||'',userName:name}),g.id]);return {data:{message},groupId:g.id,notify:users,push:users.filter((id:string)=>id!==actor&&!muted.has(id)),title:g.name,body:`${name}: ${preview}`,pushData:{userAvatar:sender?.avatar||sender?.photo||'',userName:name,fromUserId:actor}};
+  const sender=(await db.query("SELECT full_name,username,avatar,source->>'profileImageUrl' AS photo FROM users WHERE id=$1",[actor])).rows[0];const name=sender?.full_name||sender?.username||'MegaRadio';const preview=messageType==='image'?'📷 Fotoğraf':messageType==='gif'?'GIF':messageType==='station'?'Bir radyo paylaştı':content.slice(0,200);for(const userId of users.filter((id:string)=>id!==actor))await db.query(`WITH updated AS (UPDATE user_notifications SET from_user_id=$3,title=$4,message=$5,data=$6::jsonb,created_at=now() WHERE id=(SELECT id FROM user_notifications WHERE user_id=$2 AND type='new_message' AND data->>'groupId'=$7 AND is_read=false ORDER BY created_at DESC LIMIT 1) AND is_read=false RETURNING id) INSERT INTO user_notifications(id,user_id,from_user_id,type,title,message,data) SELECT $1,$2,$3,'new_message',$4,$5,$6::jsonb WHERE NOT EXISTS(SELECT 1 FROM updated)`,[notificationId(),userId,actor,g.name,`${name}: ${preview}`,JSON.stringify({screen:'group-chat',groupId:g.id,messageId:id,userAvatar:sender?.avatar||sender?.photo||'',userName:name}),g.id]);return {data:{message},groupId:g.id,notify:users,push:users.filter((id:string)=>id!==actor&&!muted.has(id)),title:g.name,body:`${name}: ${preview}`,pushData:{messageId:id,userAvatar:sender?.avatar||sender?.photo||'',userName:name,fromUserId:actor}};
  });
  register('post','/:id/delete',async(db,actor,req)=>{
   const g=await member(db,actor,req.params.id),{messageId,scope}=req.body||{};if(!['self','everyone'].includes(scope))throw fail(400,'Invalid deletion scope');

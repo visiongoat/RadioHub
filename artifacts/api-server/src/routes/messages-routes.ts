@@ -24,7 +24,7 @@ import { notificationStore, pgMarkConversationNotificationsRead, pgUpsertMessage
 import { pgFindUserById, userStore } from "../data/postgres-user-store";
 import { engagementStore } from "../services/user-engagement-service";
 import { pgFollowPage, pgIsFollowing } from "../data/postgres-engagement-store";
-import { messageStore, pgPinChatMessage, pgPinnedChatMessages, pgDeleteChatMessage, pgChatMessageById, pgConversationMessages, pgConversations, pgCreateMessage, pgMarkMessagesRead, pgMessageContacts, pgUnreadMessageCount, pgHasConversation } from "../data/postgres-message-store";
+import { messageStore, pgPinChatMessage, pgPinnedChatMessages, pgDeleteChatMessage, pgChatMessageById, pgConversationMessageContext, pgConversationMessages, pgConversations, pgCreateMessage, pgMarkMessagesRead, pgMessageContacts, pgUnreadMessageCount, pgHasConversation } from "../data/postgres-message-store";
 function normalizeIp(ip: string | undefined): string {
     if (!ip)
         return 'unknown';
@@ -119,9 +119,9 @@ function publicChatUser(user: any): any | null {
         profileImageUrl: user.profileImageUrl,
     };
 }
-async function markConversationNotificationsRead(userId: string, partnerId: string): Promise<void> {
+async function markConversationNotificationsRead(userId: string, partnerId: string, messageIds?:string[]): Promise<void> {
     {
-        await pgMarkConversationNotificationsRead(userId, partnerId);
+        await pgMarkConversationNotificationsRead(userId, partnerId, ...(messageIds?[messageIds]:[]));
         await CacheManager.clearByPattern(`notifications:postgres:${userId}:`).catch(() => {});
     }
 }
@@ -229,24 +229,29 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                 if (!/^[0-9a-f]{24}$/i.test(partnerId))
                     return void res.status(400).json({ error: "Invalid partner ID" });
                 const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 50, 100));
-                const before = req.query.before;
+                const before = req.query.before, around = req.query.aroundMessageId;
+                if (around !== undefined && (typeof around !== 'string' || !/^[0-9a-f]{24}$/i.test(around) || before !== undefined))
+                    return void res.status(400).json({ error: 'Invalid message context' });
                 if (before !== undefined && (typeof before !== 'string' || !/^[0-9a-f]{24}$/i.test(before)))
                     return void res.status(400).json({ error: 'Invalid message cursor' });
                 if (!await canReadConversation(rawId, partnerId))
                     return void res.status(403).json({ error: 'Conversation not available' });
-                const [pageMessages, partner] = await Promise.all([
-                    pgConversationMessages(rawId, partnerId, before as string | undefined, limit + 1),
+                const [page, partner] = await Promise.all([
+                    around ? pgConversationMessageContext(rawId,partnerId,around as string) : pgConversationMessages(rawId, partnerId, before as string | undefined, limit + 1),
                     pgFindUserById(partnerId),
                 ]);
-                const messages = pageMessages.slice(-limit);
+                const context=around?page as Awaited<ReturnType<typeof pgConversationMessageContext>>:null;
+                const pageMessages=Array.isArray(page)?page:[];
+                const messages = context?context.messages:pageMessages.slice(-limit);
                 const blocked=await directPairBlocked(rawId,partnerId);
-                if(!blocked){await pgMarkMessagesRead(rawId, partnerId, messages.map(message => message._id));
-                await markConversationNotificationsRead(rawId, partnerId);
-                chatService.sendToUser(partnerId, { type: "chat:read", byUserId: rawId });}
+                if(!blocked&&(!context||context.targetFound)){const visibleIds=messages.map(message=>message._id);await pgMarkMessagesRead(rawId, partnerId, visibleIds);
+                await markConversationNotificationsRead(rawId, partnerId, context?visibleIds:undefined);
+                chatService.sendToUser(partnerId, { type: "chat:read", byUserId: rawId, ...(context?{messageIds:visibleIds}:{}) });}
                 return void res.json({
                     messages,
                     partner: partner ? { ...publicChatUser(partner), online: !blocked && chatService.isOnline(partnerId) } : null,
-                    hasMore: pageMessages.length > limit,
+                    hasMore: context?context.hasMore:pageMessages.length > limit,
+                    ...(context?{targetFound:context.targetFound}:{}),
                     canSend: await canSendConversation(rawId, partnerId),
                     listening: blocked?[]:chatListening.between(rawId,partnerId),
                     pinnedMessages:await pgPinnedChatMessages(rawId,partnerId),
