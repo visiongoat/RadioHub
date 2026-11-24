@@ -374,7 +374,7 @@ app.use('/cast-receiver', (req, res, next) => {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Range',
-    'Cache-Control': 'public, max-age=3600',
+    'Cache-Control': 'public, max-age=60, must-revalidate',
   });
   if (req.method === 'OPTIONS') return void res.sendStatus(200);
   next();
