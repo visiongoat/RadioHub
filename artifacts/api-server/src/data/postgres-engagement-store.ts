@@ -6,6 +6,7 @@ import { lockStationIdentity, resolveStationId, resolveStationIds } from './stat
 import { publicUserIdentity } from '../utils/public-user-identity';
 import { normalizePublicUserSearch } from '../utils/user-handle';
 import { resolveLegacyUserHandle } from './user-handle-store';
+import {stationCardSelection,stationCardFromPostgres} from './station-read-store';
 
 const pool = () => getPostgresPool();
 
@@ -325,6 +326,7 @@ export async function pgFavoriteStationsForUser(
   sort: string,
   page: number,
   limit: number,
+  compact = false,
 ): Promise<{ stations: any[]; total: number }> {
   const order = sort === "oldest" ? "f.created_at ASC" : sort === "name" ? "s.name ASC" :
     sort === "country" ? "s.country ASC NULLS LAST" : "f.created_at DESC";
@@ -337,14 +339,14 @@ export async function pgFavoriteStationsForUser(
   }
   const [rows, count] = await Promise.all([
     pool().query(
-      `SELECT s.*,f.created_at AS favorited_at FROM user_favorites f
+      `SELECT ${compact ? stationCardSelection('s', true) : 's.*'},f.created_at AS favorited_at FROM user_favorites f
        JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)) ORDER BY ${order}${suffix}`,
       values,
     ),
     pool().query<{ count: string }>("SELECT count(*)::text count FROM user_favorites f JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))", [userId]),
   ]);
   return {
-    stations: rows.rows.map((row) => ({ ...stationShape(row), favoritedAt: row.favorited_at })),
+    stations: rows.rows.map((row) => ({ ...(compact ? stationCardFromPostgres(row) : stationShape(row)), favoritedAt: row.favorited_at })),
     total: Number(count.rows[0]?.count || 0),
   };
 }

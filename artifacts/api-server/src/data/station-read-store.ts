@@ -20,6 +20,19 @@ const CARD_SELECTION = `${CARD_COLUMNS},COALESCE((SELECT jsonb_object_agg(k,sour
   FROM unnest(ARRAY[${CARD_SOURCE_KEYS.map(key => `'${key}'`).join(',')}]::text[]) AS k
   WHERE source ? k),'{}'::jsonb) AS source`;
 
+/** Join-safe native favorites projection; the public catalog contract stays unchanged. */
+export function stationCardSelection(alias = '', playbackFallbacks = false): string {
+  if (alias && !/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error('Invalid station SQL alias');
+  const prefix = alias ? `${alias}.` : '';
+  const columns = alias ? CARD_COLUMNS.split(',').map(column => prefix + column.trim()).join(',') : CARD_COLUMNS;
+  const keys = playbackFallbacks ? [...CARD_SOURCE_KEYS,
+    'urlHigh','urlLow','url_high','url_low','urlBackup','url_backup','urlAlternatives','url_alternatives',
+  ] : CARD_SOURCE_KEYS;
+  return `${columns},COALESCE((SELECT jsonb_object_agg(k,${prefix}source->k)
+  FROM unnest(ARRAY[${keys.map(key => `'${key}'`).join(',')}]::text[]) AS k
+  WHERE ${prefix}source ? k),'{}'::jsonb) AS source`;
+}
+
 const boundedInteger = (value: number, fallback: number, max: number): number =>
   Number.isFinite(value) ? Math.max(1, Math.min(Math.trunc(value), max)) : fallback;
 const containsPattern = (value: string): string => `%${value.replace(/[\\%_]/g, '\\$&')}%`;
@@ -62,6 +75,9 @@ function fromPostgres(row: Record<string, any> | undefined): any | null {
     noIndex: row.no_index, createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
+
+/** The same DTO as compact catalog cards; performs no additional reads. */
+export const stationCardFromPostgres = (row: Record<string, any>): any => fromPostgres(row);
 
 async function postgresStation(identifier: string, allowHistoricalRepair = true): Promise<any | null> {
   const result = await getPostgresPool().query(
