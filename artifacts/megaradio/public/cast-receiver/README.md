@@ -49,8 +49,36 @@ Android rebuild before they affect a physical Cast session.
 - Station generation checks prevent late artwork/old-station metadata from
   replacing a newly requested station. Genuine idle clears old artwork; a CAF
   failure remains visible until a new LOAD.
-- Status copy currently follows receiver device language for English, Turkish
-  and German, with English fallback. Sender currently supplies no UI locale.
+- Status copy supports the same 14 app languages; LOAD customData.language wins,
+  receiver device language is the fallback. Hebrew/Arabic use RTL text direction.
+  Track/status rows reserve fixed height so metadata changes never shift artwork.
+
+## Current station and metadata ownership
+
+New LOAD customData carries `stationId`, `stationName`, localized `genre` and
+`country`, canonical `genres`, `language`, unique `castIntentId`, producer `castOwnerId`, `castSequence`,
+`metadataSequence`, and optional `nowPlaying: {title, artist, observedAt, expiresAt}`.
+The published legacy commands remain available. New `METADATA` messages require
+matching station/intent/sequence and a newer metadataSequence; they call official
+CAF `setMediaInformation` and never reload media. Retired intents are bounded to64
+and cannot replay an old LOAD. A second64-owner high-water cache rejects unseen
+older LOAD sequences from the same producer without comparing different phones.
+Pending loads ignore the old element's idle state.
+
+The receiver owns the only Cast-specific public metadata reader. It reads fixed
+`https://api.themegaradio.com/api/now-playing/:stationId` while CAF is playing,
+at most once per60s, singleflight, with9s abort deadline,64KiB body cap and bounded
+failure backoff. Pause/idle/error/new station/page hide abort the request. It works
+without the sender phone staying in the foreground. No account cookie/token or
+stream URL is sent. API CORS for the registered HTTPS origin was verified.
+
+Source `observedAt` determines the120s validity, not fetch time or titleChangedAt.
+Repeated cached responses do not renew it; the same long song remains valid when
+a genuinely newer upstream observation arrives. Same-intent changed CAF metadata
+also counts as a genuine observation, whereas repeated events and our own metadata
+broadcast do not. Expired/unknown/diagnostic data falls back to actual genre/country.
+Song has10s and context labels4s display slots, with no new animations; reduced
+motion/hidden UI stops rotation. CAF owns connecting/buffering/playing/paused/error.
 
 ## Required before physical acceptance
 

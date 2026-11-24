@@ -6,10 +6,12 @@
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="no-referrer">
   <title>MegaRadio</title>
-  <link rel="stylesheet" href="receiver.css">
+  <link rel="stylesheet" href="receiver.css?v=cast122-1">
   <script defer src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-  <script defer src="receiver-model.js"></script>
-  <script defer src="receiver.js"></script>
+  <script defer src="receiver-copy.js?v=cast122-1"></script>
+  <script defer src="receiver-model.js?v=cast122-1"></script>
+  <script defer src="receiver-metadata.js?v=cast122-1"></script>
+  <script defer src="receiver.js?v=cast122-1"></script>
 </head>
 <body data-state="idle">
   <!-- CAF owns this single, unmuted media element and all transport controls. -->
@@ -23,8 +25,8 @@
         <img id="station-art" class="station-art" alt="" hidden>
         <img id="fallback-art" class="fallback-art" src="assets/mega-mark.svg" alt="" width="114" height="110">
       </div>
-      <h1 id="station-name">MegaRadio</h1>
-      <p id="track-name" class="track" hidden></p>
+      <h1 id="station-name" dir="auto">MegaRadio</h1>
+      <p id="track-name" class="track" dir="auto" hidden></p>
       <p id="playback-state" class="state" role="status" aria-live="polite"></p>
     </section>
     <img class="signature" src="assets/mega-wordmark.svg" alt="MegaRadio" width="223" height="45">
