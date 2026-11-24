@@ -1589,7 +1589,7 @@ ${keysText}`;
                 return void res.status(401).json({ error: 'Authentication required' });
             }
             {
-                const result = await pgFavoriteStationsForUser(currentUserId, sortQuery, page, limit);
+                const result = await pgFavoriteStationsForUser(currentUserId, sortQuery, page, limit, req.query.slim === '1');
                 const stations = stripPlaceholders(result.stations);
                 if (page > 0 && limit > 0) {
                     return void res.json({ stations, pagination: {
@@ -1979,7 +1979,8 @@ ${keysText}`;
             }
             const userId = String(user._id);
             const usePagination = page > 0 && limit > 0;
-            const cacheKey = `user-favorites:${userId}:p${page}:l${limit}:f${fieldsParam}`;
+            const compact = req.query.slim === '1';
+            const cacheKey = `user-favorites:${userId}:p${page}:l${limit}:f${fieldsParam}${compact ? ':native-card-v1' : ''}`;
             const cached = await publicStationCache.get(cacheKey);
             if (cached) {
                 return void res.json(cached);
@@ -2017,8 +2018,8 @@ ${keysText}`;
             else {
                 projectStage = defaultMobileFields;
             }
-            const favoritePage = await pgFavoriteStationsForUser(userId, 'newest', page, limit);
-            const stations = favoritePage.stations.map(station => Object.fromEntries(
+            const favoritePage = await pgFavoriteStationsForUser(userId, 'newest', page, limit, compact);
+            const stations = compact ? favoritePage.stations : favoritePage.stations.map(station => Object.fromEntries(
                 Object.keys(projectStage).filter(field => station[field] !== undefined).map(field => [field,station[field]])
             ));
             const totalCount = favoritePage.total;
