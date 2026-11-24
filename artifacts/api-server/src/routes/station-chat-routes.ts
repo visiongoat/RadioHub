@@ -104,12 +104,15 @@ export function registerStationChatRoutes(
     [limited, optional],
     async (req) => {
       await validate(req);
-      if (req.query.before && !roomId(req.query.before))
+      if (req.query.aroundMessageId !== undefined && (!roomId(req.query.aroundMessageId) || req.query.before !== undefined))
+        throw Object.assign(Error("INVALID_CONTEXT"), { status: 400 });
+      if (req.query.before !== undefined && !roomId(req.query.before))
         throw Object.assign(Error("INVALID_CURSOR"), { status: 400 });
       return roomPage(
         req.params.station,
         actor(req),
         req.query.before as string,
+        req.query.aroundMessageId as string,
       );
     },
   );

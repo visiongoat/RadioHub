@@ -1,3 +1,4 @@
+import {messageContextSQL,messageContextRows} from './chat-message-context';
 import {radioRequest} from '../utils/chat-radio';
 import {claimViewOnce,viewOnceId} from './chat-view-once';
 import {directPairBlocked} from './direct-chat-safety';
@@ -50,6 +51,14 @@ export async function pgConversationMessages(
     [userId, partnerId, before || "", limit],
   );
   return result.rows.map(shape).reverse();
+}
+
+export async function pgConversationMessageContext(userId:string,partnerId:string,target:string){
+  const select=`SELECT m.*,(SELECT $1=ANY(v.opened_by) FROM chat_view_once_media v WHERE v.id=replace(m.image_url,'view-once:','')) view_once_opened,(SELECT jsonb_build_object('_id',r.id,'fromUserId',r.from_user_id,'content',CASE WHEN r.deleted_at IS NULL THEN r.content ELSE '' END,'messageType',r.message_type,'deletedAt',r.deleted_at) FROM direct_messages r WHERE r.id=m.reply_to_id AND NOT ($1=ANY(r.hidden_for))) reply_to FROM direct_messages m`;
+  const eligible=`((m.from_user_id=$1 AND m.to_user_id=$2) OR (m.from_user_id=$2 AND m.to_user_id=$1)) AND NOT ($1=ANY(m.hidden_for)) AND m.deleted_at IS NULL`;
+  const result=await getPostgresPool().query(messageContextSQL('direct_messages',select,eligible,'$3'),[userId,partnerId,target]);
+  const context=messageContextRows(result.rows,target);
+  return {...context,messages:context.messages.map(shape)};
 }
 
 export async function pgHasConversation(userId: string, partnerId: string): Promise<boolean> {
