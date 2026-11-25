@@ -1,3 +1,4 @@
+import {setChatReaction,validChatReaction} from '../data/chat-reactions';
 import {activeStationRooms} from '../services/station-chat-home';
 import {stationRoomSummaries,summaryStationIds} from '../services/station-room-summaries';
 import {stationChatProfilePreview} from '../services/station-chat-profile';
@@ -95,7 +96,7 @@ export function registerStationChatRoutes(
           user || "guest:" + ticketHash(guest),
         ],
       );
-      return { ticket: token, ...(await roomPage(req.params.station, user)) };
+      return { ticket: token, reactionsEnabled: true, ...(await roomPage(req.params.station, user)) };
     },
   );
   route(
@@ -131,6 +132,26 @@ export function registerStationChatRoutes(
       };
     },
   );
+  route("post","/api/station-chat/:station/reaction",[limited,auth],async req=>{
+    const {messageId,emoji}=req.body||{};
+    const station=req.params.station;
+    if(!roomId(station)||!roomId(messageId)||!validChatReaction(emoji))
+      throw Object.assign(Error("INVALID_REACTION"),{status:400});
+    const db=await getPostgresPool().connect();
+    try{
+      await db.query("BEGIN");
+      const message=await setChatReaction(db,"station",messageId,actor(req),emoji,station);
+      if(!message)throw Object.assign(Error("MESSAGE_UNAVAILABLE"),{status:404});
+      await notifyRoom(db,station,{type:"reaction",messageId});
+      await db.query("COMMIT");
+      return {messageId,reactions:message.reactions,reactionsRevision:Number(message.reactions_revision)};
+    }catch(error){
+      await db.query("ROLLBACK").catch(()=>{});
+      throw error;
+    }finally{
+      db.release();
+    }
+  });
   route(
     "post",
     "/api/station-chat/:station/delete",

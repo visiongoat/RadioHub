@@ -40,6 +40,8 @@ export async function pgCreateNotification(input: NotificationInput): Promise<an
 export const notificationCategories = {
   all: null,
   social: ['follow', 'unfollow', 'group_invitation', 'new_message', 'station_mention'],
+  messages: ['new_message', 'group_invitation'],
+  mentions: ['station_mention'],
   stations: ['new_station', 'favorite_station', 'favorite_update'],
   system: ['system', 'promotional', 'comment_reply'],
 } as const;

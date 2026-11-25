@@ -47,7 +47,7 @@ export function roomContent(body: any) {
   const caption = messageType === "gif" && body?.caption ? roomText(body.caption) : "";
   return { content, messageType, ...(caption ? { caption } : {}) };
 }
-export const messageSQL = `SELECT m.id AS "_id",m.station_id AS "stationId",m.user_id AS "userId",m.content,m.caption,m.message_type AS "messageType",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl','canOpenProfile',u.is_public_profile,'isPremium',EXISTS(SELECT 1 FROM subscriptions subscription WHERE subscription.user_id=u.id AND subscription.is_active=true AND (subscription.plan='premium_lifetime' OR (subscription.plan IN ('premium_monthly','premium_quarterly','premium_yearly') AND subscription.expires_at>now())))) AS sender FROM station_chat_messages m JOIN users u ON u.id=m.user_id`;
+export const messageSQL = `SELECT m.id AS "_id",m.station_id AS "stationId",m.user_id AS "userId",m.content,m.caption,m.message_type AS "messageType",m.created_at AS "createdAt",m.deleted_at AS "deletedAt",m.reactions,m.reactions_revision::int AS "reactionsRevision",jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl','canOpenProfile',u.is_public_profile,'isPremium',EXISTS(SELECT 1 FROM subscriptions subscription WHERE subscription.user_id=u.id AND subscription.is_active=true AND (subscription.plan='premium_lifetime' OR (subscription.plan IN ('premium_monthly','premium_quarterly','premium_yearly') AND subscription.expires_at>now())))) AS sender FROM station_chat_messages m JOIN users u ON u.id=m.user_id`;
 export async function roomPage(
   station: string,
   actor: string,
@@ -304,7 +304,7 @@ export class StationChatHub {
     const clients = this.rooms.get(station);
     if (!clients?.size) return;
     try {
-      if (event.type === "changed" && roomId(event.messageId)) {
+      if ((event.type === "changed" || event.type === "reaction") && roomId(event.messageId)) {
         const message = (
           await getPostgresPool().query(
             messageSQL +
@@ -313,7 +313,7 @@ export class StationChatHub {
           )
         ).rows[0];
         if (!message) return;
-        message.mentions=(await hydrateRoomMentions([message]))[0].mentions;
+        if (event.type === "changed") message.mentions=(await hydrateRoomMentions([message]))[0].mentions;
         const blocked = new Set(
           (
             await getPostgresPool().query(
@@ -322,8 +322,11 @@ export class StationChatHub {
             )
           ).rows.map((r) => r.user_id),
         );
+        const update = event.type === "reaction"
+          ? { type: "reaction", messageId: message._id, reactions: message.reactions, reactionsRevision: message.reactionsRevision }
+          : { type: "message", message };
         for (const c of clients)
-          if (!blocked.has(c.actor)) this.send(c, { type: "message", message });
+          if (!blocked.has(c.actor)) this.send(c, update);
       } else for (const c of clients) this.send(c, event);
     } catch {
       for (const c of clients) this.send(c, { type: "resync" });
