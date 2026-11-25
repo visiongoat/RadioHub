@@ -540,6 +540,13 @@
       "when": 1795352400000,
       "tag": "0073_station_chat_gif_caption",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1795610835498,
+      "tag": "0074_station_chat_reactions",
+      "breakpoints": true
     }
   ]
 }
