@@ -57,6 +57,29 @@ export async function pgPublicProfileCacheIdentity(value: string): Promise<strin
   return row ? `${row.id}:${row.revision}` : null;
 }
 
+export async function pgPublicProfileForSharing(value: string): Promise<{ slug: string; name: string; avatar: string | null } | null> {
+  const find = (identity: string) => {
+    const query = {
+      text: `SELECT id,slug,username,full_name,avatar,source->>'profileImageUrl' AS profile_image_url FROM users
+             WHERE (id=$1 OR slug=$1 OR username=$1) AND is_public_profile=true AND status='active' LIMIT 1`,
+      values: [identity],
+      query_timeout: 3000,
+    };
+    return pool().query<{
+      id: string; slug: string | null; username: string | null; full_name: string | null;
+      avatar: string | null; profile_image_url: string | null;
+    }>(query);
+  };
+  let row = (await find(value)).rows[0];
+  if (!row) {
+    const legacyId = await resolveLegacyUserHandle(value);
+    if (legacyId && legacyId !== value) row = (await find(legacyId)).rows[0];
+  }
+  if (!row) return null;
+  const { name, avatar } = publicUserIdentity(row);
+  return { slug: row.slug || row.id, name, avatar };
+}
+
 export async function pgPublicProfile(value: string, currentUserId?: string): Promise<any | null> {
   const result = await pool().query(
     `SELECT u.*,
