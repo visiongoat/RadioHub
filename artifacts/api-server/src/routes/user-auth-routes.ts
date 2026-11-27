@@ -1,4 +1,5 @@
 import { registerFacebookAuthRoutes } from './facebook-auth-routes';
+import { desktopOAuthFailure, finishDesktopOAuth, isDesktopOAuthReturn, readDesktopOAuth, registerDesktopAuthRoutes } from './desktop-auth-routes';
 import {publishStoredNotification} from '../services/notification-events';
 import {googleIdentity, canLinkGoogleAccount} from '../auth/google-identity-policy';
 import { pgListeningTotalMinutes } from '../data/postgres-listening-store';
@@ -452,6 +453,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store');
         next();
     });
+    registerDesktopAuthRoutes(app, generateAuthToken);
     // Social authentication routes with passport integration
     app.get("/api/auth/google", async (req, res, next) => {
         const { getSocialAuthStatus } = deps;
@@ -573,10 +575,15 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const savedLang = (req.session as any)?.oauthReturnLang || '';
         const langPrefix = savedLang ? `/${savedLang}` : '';
         const frontendBase = process.env.FRONTEND_URL || '';
-        const returnTo = resolveGoogleOAuthReturnTo(
-            (req.session as any)?.oauthReturnTo, req.query.state,
-            process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod');
+        const secret = process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod';
+        const returnTo = resolveGoogleOAuthReturnTo((req.session as any)?.oauthReturnTo, req.query.state, secret);
+        const signedReturnTo = resolveGoogleOAuthReturnTo(undefined, req.query.state, secret);
+        const desktop = readDesktopOAuth(req, 'google', returnTo);
+        if ((isDesktopOAuthReturn(returnTo) || isDesktopOAuthReturn(signedReturnTo)) && (!desktop || signedReturnTo !== desktop.marker)) {
+            return void res.status(400).send('Desktop sign-in expired. Please try again.');
+        }
         const failureRedirect = (error: string) => buildOAuthFailureRedirect(frontendBase, returnTo, savedLang, error);
+        const fail = (error: string) => desktop ? desktopOAuthFailure(req, res, desktop) : res.redirect(failureRedirect(error));
         void logAuthEvent(req, { method: 'google', event: 'callback_received', ok: true, message: `lang=${savedLang || '(none)'} hasState=${!!req.query.state}` });
         passport.authenticate('google', {
             failureRedirect: failureRedirect('google_auth_failed')
@@ -584,13 +591,14 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             if (err) {
                 logger.error('Google OAuth callback error:', err);
                 void logAuthEvent(req, { method: 'google', event: 'passport_error', ok: false, message: err?.message || String(err) });
-                return void res.redirect(failureRedirect('google_auth_failed'));
+                return void fail('google_auth_failed');
             }
             if (!user) {
                 void logAuthEvent(req, { method: 'google', event: 'no_user_returned', ok: false, message: info?.message || 'cancelled or rejected' });
-                return void res.redirect(failureRedirect('google_auth_cancelled'));
+                return void fail('google_auth_cancelled');
             }
             void logAuthEvent(req, { method: 'google', event: 'profile_resolved', ok: true, email: user.email, userId: user._id?.toString() });
+            if (desktop) return void await finishDesktopOAuth(req, res, desktop, user._id.toString());
             try {
                 const token = await generateAuthToken(user._id.toString(), 'web');
                 logger.log(`✅ Google OAuth token generated for: ${user.email} userId=${user._id} tokenIssued=true`);
@@ -644,21 +652,27 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const savedLang = (req.session as any)?.oauthReturnLang || '';
         const langPrefix = savedLang ? `/${savedLang}` : '';
         const returnTo = safeOAuthReturnTo((req.session as any)?.oauthReturnTo);
-        const failureRedirect = () => buildOAuthFailureRedirect(frontendBase, returnTo, savedLang, 'apple_auth_failed');
+        const desktop = readDesktopOAuth(req, 'apple', returnTo);
+        if (isDesktopOAuthReturn(returnTo) && !desktop) return void res.status(400).send('Desktop sign-in expired. Please try again.');
+        if (desktop && (!req.body?.state || req.body.state !== (req.session as any)?.appleOAuthState)) {
+            return void res.status(400).send('Desktop sign-in state is invalid.');
+        }
+        const fail = () => desktop ? desktopOAuthFailure(req, res, desktop)
+            : res.redirect(buildOAuthFailureRedirect(frontendBase, returnTo, savedLang, 'apple_auth_failed'));
         void logAuthEvent(req, { method: 'apple', event: 'callback_received', ok: true, message: `lang=${savedLang || '(none)'} hasCode=${!!req.body?.code} hasIdToken=${!!req.body?.id_token}` });
         try {
             const { code, id_token, state, user: userDataStr } = req.body;
             if (!code && !id_token) {
                 logger.error('🍎 Apple callback: No code or id_token received');
                 void logAuthEvent(req, { method: 'apple', event: 'missing_credentials', ok: false, message: 'no code and no id_token in body' });
-                return void res.redirect(failureRedirect());
+                return void fail();
             }
             const savedState = (req.session as any)?.appleOAuthState;
             delete (req.session as any).appleOAuthState;
             if (!state || !savedState || state !== savedState) {
                 logger.error('🍎 Apple OAuth state mismatch or missing', { state: !!state, savedState: !!savedState });
                 void logAuthEvent(req, { method: 'apple', event: 'state_mismatch', ok: false, message: `state=${!!state} savedState=${!!savedState}` });
-                return void res.redirect(failureRedirect());
+                return void fail();
             }
             const jose = await import('jose');
             let applePayload: any;
@@ -675,7 +689,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 catch (verifyErr: any) {
                     logger.error('🍎 Apple id_token verification failed:', verifyErr);
                     void logAuthEvent(req, { method: 'apple', event: 'id_token_verify_failed', ok: false, message: verifyErr?.message || String(verifyErr) });
-                    return void res.redirect(failureRedirect());
+                    return void fail();
                 }
             }
             else if (code) {
@@ -698,7 +712,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                         const errorText = await tokenResponse.text();
                         logger.error('🍎 Apple token exchange failed:', errorText);
                         void logAuthEvent(req, { method: 'apple', event: 'token_exchange_http_error', ok: false, message: `status=${tokenResponse.status}`, detail: { body: errorText.slice(0, 500) } });
-                        return void res.redirect(failureRedirect());
+                        return void fail();
                     }
                     const tokenData = await tokenResponse.json() as any;
                     const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
@@ -711,12 +725,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 catch (tokenErr: any) {
                     logger.error('🍎 Apple token exchange error:', tokenErr);
                     void logAuthEvent(req, { method: 'apple', event: 'token_exchange_error', ok: false, message: tokenErr?.message || String(tokenErr) });
-                    return void res.redirect(failureRedirect());
+                    return void fail();
                 }
             }
             if (!applePayload || !applePayload.sub) {
                 void logAuthEvent(req, { method: 'apple', event: 'invalid_payload', ok: false, message: 'no sub in apple payload' });
-                return void res.redirect(failureRedirect());
+                return void fail();
             }
             const appleId = applePayload.sub;
             const appleEmail = applePayload.email;
@@ -774,6 +788,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                     logger.log(`✅ New Apple user created: "${userSlug}" (${appleEmail || 'no email'})`);
                 }
             }
+            if (desktop) return void await finishDesktopOAuth(req, res, desktop, String(user._id));
             try {
                 const token = await generateAuthToken((user as any)._id.toString(), 'web');
                 logger.log('✅ Apple OAuth token generated for:', (user as any).email);
@@ -793,13 +808,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             catch (tokenErr: any) {
                 logger.error('🍎 Apple OAuth token generation error:', tokenErr);
                 void logAuthEvent(req, { method: 'apple', event: 'token_generation_error', ok: false, email: (user as any)?.email, userId: (user as any)?._id?.toString(), message: tokenErr?.message || String(tokenErr) });
-                res.redirect(failureRedirect());
+                fail();
             }
         }
         catch (error: any) {
             logger.error('🍎 Apple OAuth callback error:', error);
             void logAuthEvent(req, { method: 'apple', event: 'unhandled_error', ok: false, message: error?.message || String(error) });
-            res.redirect(failureRedirect());
+            fail();
         }
     });
     // MOBILE AUTH: Google Sign-In with idToken (POST - for mobile apps)

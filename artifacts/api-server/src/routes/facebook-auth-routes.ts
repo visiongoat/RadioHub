@@ -6,6 +6,7 @@ import { createFacebookState, consumeFacebookState, createFacebookMobileHandoff,
 import { publicUserIdentity } from '../utils/public-user-identity';
 import { safeOAuthReturnTo, buildOAuthFailureRedirect, buildGoogleSessionRedirect } from '../auth/oauth-redirect';
 import { FACEBOOK_MOBILE_REDIRECT, facebookCallbackUrl, facebookProof, facebookVerifier, validFacebookState } from '../auth/facebook-oauth-policy';
+import { desktopOAuthFailure, finishDesktopOAuth, isDesktopOAuthReturn, readDesktopOAuth } from './desktop-auth-routes';
 
 const graph = () => `https://graph.facebook.com/${process.env.FACEBOOK_GRAPH_VERSION || 'v24.0'}`;
 
@@ -80,9 +81,15 @@ export function registerFacebookAuthRoutes(app: Express, deps: { generateAuthTok
     }
     delete req.session.facebookOAuth;
     const frontend = process.env.FRONTEND_URL || 'https://themegaradio.com';
-    const failure = (error: string) => res.redirect(flow.challenge
-      ? `${FACEBOOK_MOBILE_REDIRECT}?error=${encodeURIComponent(error)}`
-      : buildOAuthFailureRedirect(frontend, flow.returnTo, '', error));
+    const desktop = !flow.challenge && readDesktopOAuth(req, 'facebook', flow.returnTo);
+    if (!flow.challenge && isDesktopOAuthReturn(flow.returnTo) && !desktop) {
+      return void res.status(400).send('Desktop sign-in expired. Please try again.');
+    }
+    const failure = (error: string) => desktop
+      ? desktopOAuthFailure(req, res, desktop)
+      : res.redirect(flow.challenge
+        ? `${FACEBOOK_MOBILE_REDIRECT}?error=${encodeURIComponent(error)}`
+        : buildOAuthFailureRedirect(frontend, flow.returnTo, '', error));
     try {
       // SQL consumption also prevents parallel callbacks on separate API replicas.
       if (!await consumeFacebookState(flow.state)) return void res.status(400).send('Facebook sign-in expired. Please start again.');
@@ -102,6 +109,7 @@ export function registerFacebookAuthRoutes(app: Express, deps: { generateAuthTok
         headers: { Authorization: `Bearer ${exchanged.access_token}` },
       });
       const user = await facebookUser(profile);
+      if (desktop) return void await finishDesktopOAuth(req, res, desktop, user._id);
       if (flow.challenge) {
         const code = randomBytes(32).toString('base64url');
         await createFacebookMobileHandoff(code, user._id, flow.challenge);

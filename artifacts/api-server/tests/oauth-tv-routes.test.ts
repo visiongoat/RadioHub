@@ -1,22 +1,37 @@
 import { after, before, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import express from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-const user = { _id: '507f1f77bcf86cd799439011', email: 'oauth-test@example.test', role: 'user', appleId: 'apple-fixture' };
+const user = { _id: '507f1f77bcf86cd799439011', email: 'oauth-test@example.test', role: 'user', appleId: 'apple-fixture', status: 'active' };
+const testSessions = new Map<string, any>();
+const handoffs = new Map<string, { user_id: string; challenge: string }>();
 const noop = async () => undefined;
 const cache = { get: noop, set: noop, del: noop, clearByPattern: noop };
 mock.module('../src/cache', { defaultExport: cache, namedExports: { CacheKeys: { userSocial: () => 'fixture' } } });
-mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => { throw new Error('No database allowed in OAuth route tests'); } } });
+mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => ({ query: async (sql: string, parameters: string[] = []) => {
+  if (sql.startsWith('DELETE FROM oauth_mobile_handoffs WHERE expires_at')) return { rows: [] };
+  if (sql.startsWith('INSERT INTO oauth_mobile_handoffs')) {
+    handoffs.set(parameters[0], { user_id: parameters[1], challenge: parameters[2] });
+    return { rows: [] };
+  }
+  if (sql.includes('RETURNING user_id')) {
+    const code = handoffs.get(parameters[0]);
+    if (code?.challenge !== parameters[1]) return { rows: [] };
+    handoffs.delete(parameters[0]);
+    return { rows: [code] };
+  }
+  throw new Error('Unexpected OAuth query');
+} }) } });
 mock.module('../src/utils/logger', { namedExports: { logger: { log() {}, error() {}, warn() {} } } });
 mock.module('../src/auth/auth-event-logger', { namedExports: { logAuthEvent: noop } });
 mock.module('../src/data/postgres-api-access-store', { namedExports: { pgListAuthEvents: noop } });
 mock.module('../src/data/auth-token-store', { namedExports: { deleteUserAuthTokens: noop, findActiveAuthToken: noop, revokeAuthToken: noop } });
 mock.module('../src/data/postgres-user-store', { namedExports: {
   userStore: 'postgres', newPublicUserId: () => user._id,
-  pgCreateUser: noop, pgDeleteUser: noop, pgFindUserByEmail: noop, pgFindUserById: noop,
+  pgCreateUser: noop, pgDeleteUser: noop, pgFindUserByEmail: noop, pgFindUserById: async () => user,
   pgFindUserByIdentity: async () => ({ ...user }), pgFindUserByResetToken: noop, pgResetUserPassword: noop,
   pgListUsers: noop, pgRecentUserActivity: noop, pgUpdateUser: noop, pgUserManagementDetail: noop,
   pgUserManagementStats: noop, pgUserSocialByEmail: noop, pgUserFollowState: noop, pgUserSlugExists: noop,
@@ -48,16 +63,27 @@ before(async () => {
       oauthReturnTo: req.headers['x-fixture-return'], oauthReturnLang: 'de', appleOAuthState: 'valid-state',
       save: (done: any) => done(), destroy: (done: any) => done(),
     };
+    const sessionKey = req.headers['x-desktop-fixture'];
+    if (sessionKey) {
+      if (!testSessions.has(sessionKey)) testSessions.set(sessionKey, lastSession);
+      req.session = lastSession = testSessions.get(sessionKey);
+    }
     req.login = (_user: any, done: any) => done();
     next();
   });
   const auth = (_req: any, _res: any, next: any) => next();
   registerUserAuthRoutes(app, {
     requireAuth: auth, requireAdmin: auth,
-    generateAuthToken: async () => { if (tokenFailure) throw new Error('fixture token failure'); return 'fixture-token'; },
+    generateAuthToken: async (_id: string, type: string) => {
+      if (tokenFailure) throw new Error('fixture token failure');
+      return type === 'desktop' ? 'fixture-desktop-token' : 'fixture-token';
+    },
     getSocialAuthStatus: () => ({ google: true, apple: true }),
     passport: { authenticate: (_provider: string, _options: any, callback: any) => async (req: any, res: any) => {
-      if (!callback) return res.status(200).end();
+      if (!callback) {
+        if (req.headers['x-desktop-fixture']) return res.redirect('https://accounts.google.com/?state=' + encodeURIComponent(_options.state));
+        return res.status(200).end();
+      }
       await callback(mode === 'error' ? new Error('fixture provider error') : null, mode === 'success' ? user : null);
     } },
   });
@@ -155,5 +181,50 @@ test('real token redirects from both providers cannot escape origin through a le
     assert.equal(url.origin, site);
     assert.equal(url.pathname, '/de/');
     assert.equal(url.searchParams.get('auth_token'), 'fixture-token');
+  }
+});
+
+test('Apple and Google desktop sign-in return a short-lived code and exchange it for a desktop session', async () => {
+  const added = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APPLE_SERVICE_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'] as const;
+  const previous = added.map(key => process.env[key]);
+  try {
+    for (const key of added) process.env[key] = 'fixture';
+    for (const provider of ['apple', 'google']) {
+      const headers = { 'x-desktop-fixture': provider, 'Content-Type': 'application/json' };
+      const verifier = 'v'.repeat(43);
+      const state = 's'.repeat(43);
+      const redirect = 'http://127.0.0.1:49271/desktop-auth/callback';
+      const query = new URLSearchParams({
+        provider, state, redirect_uri: redirect, code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+      });
+      const fetchLocal = (path: string, body?: unknown, sessionHeaders = headers) => fetch(base + path, {
+        redirect: 'manual', headers: sessionHeaders, method: body ? 'POST' : 'GET', body: body && JSON.stringify(body),
+      });
+      const start = await fetchLocal('/api/auth/desktop/start?' + query);
+      assert.equal(start.status, 303);
+      const auth = await fetchLocal(start.headers.get('location')!);
+      assert.equal(auth.status, 302);
+      const providerState = new URL(auth.headers.get('location')!).searchParams.get('state');
+      assert.ok(providerState);
+      const callback = provider === 'apple'
+        ? await fetchLocal('/api/auth/apple/callback', { id_token: 'fixture-id', state: providerState })
+        : await fetchLocal('/api/auth/google/callback?state=' + encodeURIComponent(providerState));
+      assert.equal(callback.status, 303);
+      const target = new URL(callback.headers.get('location')!);
+      assert.equal(target.origin + target.pathname, redirect);
+      assert.equal(target.searchParams.get('desktop_state'), state);
+      assert.equal(target.searchParams.has('auth_token'), false);
+      const code = target.searchParams.get('desktop_code');
+      assert.ok(code);
+      assert.equal(testSessions.get(provider).oauthReturnTo, undefined);
+      const exchange = await fetchLocal('/api/auth/desktop/exchange', { code, codeVerifier: verifier });
+      assert.equal(exchange.status, 200);
+      assert.equal((await exchange.json()).token, 'fixture-desktop-token');
+      assert.equal((await fetchLocal('/api/auth/desktop/exchange', { code, codeVerifier: verifier })).status, 401);
+    }
+  } finally {
+    for (const [index, key] of added.entries()) {
+      if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index];
+    }
   }
 });
