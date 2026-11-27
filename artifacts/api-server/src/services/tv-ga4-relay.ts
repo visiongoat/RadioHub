@@ -1,4 +1,9 @@
 import type { TvDiagnosticBatch } from "../lib/tv-diagnostics-policy";
+const CLIENT_SURFACE: Record<TvDiagnosticBatch["platform"], string> = {
+  tizen: "samsung_tizen",
+  webos: "lg_webos",
+  macos: "macos",
+};
 const USAGE = new Set([
   "app_open",
   "screen_view",
@@ -24,6 +29,7 @@ export function tvGa4Payload(batch: TvDiagnosticBatch) {
     batch.events.some((e) => !USAGE.has(e.event))
   )
     return null;
+  const desktop = batch.platform === "macos";
   return {
     // Preserve all 128 random bits, without Number rounding or a new identity.
     // GA4 Web documents two positive decimal components separated by a dot.
@@ -32,17 +38,17 @@ export function tvGa4Payload(batch: TvDiagnosticBatch) {
       .join("."),
     consent: { ad_user_data: "DENIED", ad_personalization: "DENIED" },
     events: batch.events.map((event, index) => ({
-      name: `tv_${event.event}`,
+      name: `${desktop ? "desktop" : "tv"}_${event.event}`,
       params: {
         session_id: Number(batch.analytics!.sessionId),
         engagement_time_msec:
           index === 0 ? batch.analytics!.engagementTimeMsec : 0,
-        tv_platform: batch.platform,
-        client_surface: batch.platform === "tizen" ? "samsung_tizen" : "lg_webos",
+        client_surface: CLIENT_SURFACE[batch.platform],
         ...(event.event === "listening_heartbeat" ? {duration_seconds: event.durationMsec! / 1000, playback_state: "playing"} : {}),
-        tv_app_version: batch.appVersion,
-        tv_bundle_version: batch.bundleVersion,
-        tv_screen: event.route,
+        ...(desktop
+          ? { desktop_app_version: batch.appVersion, desktop_screen: event.route }
+          : { tv_platform: batch.platform, tv_app_version: batch.appVersion,
+              tv_bundle_version: batch.bundleVersion, tv_screen: event.route }),
       },
     })),
   };

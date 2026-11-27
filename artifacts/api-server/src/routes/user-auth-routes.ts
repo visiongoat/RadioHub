@@ -1,13 +1,16 @@
 import { registerFacebookAuthRoutes } from './facebook-auth-routes';
+import { desktopOAuthFailure, finishDesktopOAuth, isDesktopOAuthReturn, readDesktopOAuth, registerDesktopAuthRoutes } from './desktop-auth-routes';
 import {publishStoredNotification} from '../services/notification-events';
 import {googleIdentity, canLinkGoogleAccount} from '../auth/google-identity-policy';
 import { pgListeningTotalMinutes } from '../data/postgres-listening-store';
 import { subscriptionAccess } from '@workspace/db-shared/subscription-access';
 import type { Express } from "express";
+import { createHash, randomBytes } from 'node:crypto';
 import { profileFieldsSchema, authProfileSchema, notificationSettingsSchema } from '@workspace/api-zod';
 import { getPostgresPool } from '../postgres-runtime';
 import { pgListAuthEvents } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
+import { PASSWORD_RESET_TTL_MS, passwordMailTransport, sendPasswordResetEmail } from '../services/password-reset-mail';
 import { publicUserIdentity } from '../utils/public-user-identity';
 import { needsGeneratedHandle } from '../utils/user-handle';
 import { invalidateCommunityProfiles } from '../services/community-profiles';
@@ -25,6 +28,7 @@ import { logAuthEvent } from '../auth/auth-event-logger';
 import { verifyMobileGoogleToken, verifyMobileAppleToken } from '../auth/mobile-social-verification';
 import { deleteUserAuthTokens, findActiveAuthToken, revokeAuthToken } from '../data/auth-token-store';
 import { newPublicUserId, pgCreateUser, pgDeleteUser, pgFindUserByEmail, pgFindUserById, pgFindUserByIdentity, pgFindUserByResetToken, pgResetUserPassword, pgListUsers, pgRecentUserActivity, pgUpdateUser, pgUserManagementDetail, pgUserManagementStats, pgUserSocialByEmail, pgUserFollowState, pgUserSlugExists, userStore, } from '../data/postgres-user-store';
+import * as passwordStore from '../data/postgres-user-store';
 import { UserEngagementService, engagementStore } from '../services/user-engagement-service';
 import { pgFollowPage, pgIsFollowing } from '../data/postgres-engagement-store';
 import { notificationStore, pgCreateNotification } from '../data/postgres-notification-store';
@@ -449,6 +453,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store');
         next();
     });
+    registerDesktopAuthRoutes(app, generateAuthToken);
     // Social authentication routes with passport integration
     app.get("/api/auth/google", async (req, res, next) => {
         const { getSocialAuthStatus } = deps;
@@ -570,10 +575,15 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const savedLang = (req.session as any)?.oauthReturnLang || '';
         const langPrefix = savedLang ? `/${savedLang}` : '';
         const frontendBase = process.env.FRONTEND_URL || '';
-        const returnTo = resolveGoogleOAuthReturnTo(
-            (req.session as any)?.oauthReturnTo, req.query.state,
-            process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod');
+        const secret = process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod';
+        const returnTo = resolveGoogleOAuthReturnTo((req.session as any)?.oauthReturnTo, req.query.state, secret);
+        const signedReturnTo = resolveGoogleOAuthReturnTo(undefined, req.query.state, secret);
+        const desktop = readDesktopOAuth(req, 'google', returnTo);
+        if ((isDesktopOAuthReturn(returnTo) || isDesktopOAuthReturn(signedReturnTo)) && (!desktop || signedReturnTo !== desktop.marker)) {
+            return void res.status(400).send('Desktop sign-in expired. Please try again.');
+        }
         const failureRedirect = (error: string) => buildOAuthFailureRedirect(frontendBase, returnTo, savedLang, error);
+        const fail = (error: string) => desktop ? desktopOAuthFailure(req, res, desktop) : res.redirect(failureRedirect(error));
         void logAuthEvent(req, { method: 'google', event: 'callback_received', ok: true, message: `lang=${savedLang || '(none)'} hasState=${!!req.query.state}` });
         passport.authenticate('google', {
             failureRedirect: failureRedirect('google_auth_failed')
@@ -581,13 +591,14 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             if (err) {
                 logger.error('Google OAuth callback error:', err);
                 void logAuthEvent(req, { method: 'google', event: 'passport_error', ok: false, message: err?.message || String(err) });
-                return void res.redirect(failureRedirect('google_auth_failed'));
+                return void fail('google_auth_failed');
             }
             if (!user) {
                 void logAuthEvent(req, { method: 'google', event: 'no_user_returned', ok: false, message: info?.message || 'cancelled or rejected' });
-                return void res.redirect(failureRedirect('google_auth_cancelled'));
+                return void fail('google_auth_cancelled');
             }
             void logAuthEvent(req, { method: 'google', event: 'profile_resolved', ok: true, email: user.email, userId: user._id?.toString() });
+            if (desktop) return void await finishDesktopOAuth(req, res, desktop, user._id.toString());
             try {
                 const token = await generateAuthToken(user._id.toString(), 'web');
                 logger.log(`✅ Google OAuth token generated for: ${user.email} userId=${user._id} tokenIssued=true`);
@@ -641,21 +652,27 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const savedLang = (req.session as any)?.oauthReturnLang || '';
         const langPrefix = savedLang ? `/${savedLang}` : '';
         const returnTo = safeOAuthReturnTo((req.session as any)?.oauthReturnTo);
-        const failureRedirect = () => buildOAuthFailureRedirect(frontendBase, returnTo, savedLang, 'apple_auth_failed');
+        const desktop = readDesktopOAuth(req, 'apple', returnTo);
+        if (isDesktopOAuthReturn(returnTo) && !desktop) return void res.status(400).send('Desktop sign-in expired. Please try again.');
+        if (desktop && (!req.body?.state || req.body.state !== (req.session as any)?.appleOAuthState)) {
+            return void res.status(400).send('Desktop sign-in state is invalid.');
+        }
+        const fail = () => desktop ? desktopOAuthFailure(req, res, desktop)
+            : res.redirect(buildOAuthFailureRedirect(frontendBase, returnTo, savedLang, 'apple_auth_failed'));
         void logAuthEvent(req, { method: 'apple', event: 'callback_received', ok: true, message: `lang=${savedLang || '(none)'} hasCode=${!!req.body?.code} hasIdToken=${!!req.body?.id_token}` });
         try {
             const { code, id_token, state, user: userDataStr } = req.body;
             if (!code && !id_token) {
                 logger.error('🍎 Apple callback: No code or id_token received');
                 void logAuthEvent(req, { method: 'apple', event: 'missing_credentials', ok: false, message: 'no code and no id_token in body' });
-                return void res.redirect(failureRedirect());
+                return void fail();
             }
             const savedState = (req.session as any)?.appleOAuthState;
             delete (req.session as any).appleOAuthState;
             if (!state || !savedState || state !== savedState) {
                 logger.error('🍎 Apple OAuth state mismatch or missing', { state: !!state, savedState: !!savedState });
                 void logAuthEvent(req, { method: 'apple', event: 'state_mismatch', ok: false, message: `state=${!!state} savedState=${!!savedState}` });
-                return void res.redirect(failureRedirect());
+                return void fail();
             }
             const jose = await import('jose');
             let applePayload: any;
@@ -672,7 +689,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 catch (verifyErr: any) {
                     logger.error('🍎 Apple id_token verification failed:', verifyErr);
                     void logAuthEvent(req, { method: 'apple', event: 'id_token_verify_failed', ok: false, message: verifyErr?.message || String(verifyErr) });
-                    return void res.redirect(failureRedirect());
+                    return void fail();
                 }
             }
             else if (code) {
@@ -695,7 +712,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                         const errorText = await tokenResponse.text();
                         logger.error('🍎 Apple token exchange failed:', errorText);
                         void logAuthEvent(req, { method: 'apple', event: 'token_exchange_http_error', ok: false, message: `status=${tokenResponse.status}`, detail: { body: errorText.slice(0, 500) } });
-                        return void res.redirect(failureRedirect());
+                        return void fail();
                     }
                     const tokenData = await tokenResponse.json() as any;
                     const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
@@ -708,12 +725,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 catch (tokenErr: any) {
                     logger.error('🍎 Apple token exchange error:', tokenErr);
                     void logAuthEvent(req, { method: 'apple', event: 'token_exchange_error', ok: false, message: tokenErr?.message || String(tokenErr) });
-                    return void res.redirect(failureRedirect());
+                    return void fail();
                 }
             }
             if (!applePayload || !applePayload.sub) {
                 void logAuthEvent(req, { method: 'apple', event: 'invalid_payload', ok: false, message: 'no sub in apple payload' });
-                return void res.redirect(failureRedirect());
+                return void fail();
             }
             const appleId = applePayload.sub;
             const appleEmail = applePayload.email;
@@ -771,6 +788,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                     logger.log(`✅ New Apple user created: "${userSlug}" (${appleEmail || 'no email'})`);
                 }
             }
+            if (desktop) return void await finishDesktopOAuth(req, res, desktop, String(user._id));
             try {
                 const token = await generateAuthToken((user as any)._id.toString(), 'web');
                 logger.log('✅ Apple OAuth token generated for:', (user as any).email);
@@ -790,13 +808,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             catch (tokenErr: any) {
                 logger.error('🍎 Apple OAuth token generation error:', tokenErr);
                 void logAuthEvent(req, { method: 'apple', event: 'token_generation_error', ok: false, email: (user as any)?.email, userId: (user as any)?._id?.toString(), message: tokenErr?.message || String(tokenErr) });
-                res.redirect(failureRedirect());
+                fail();
             }
         }
         catch (error: any) {
             logger.error('🍎 Apple OAuth callback error:', error);
             void logAuthEvent(req, { method: 'apple', event: 'unhandled_error', ok: false, message: error?.message || String(error) });
-            res.redirect(failureRedirect());
+            fail();
         }
     });
     // MOBILE AUTH: Google Sign-In with idToken (POST - for mobile apps)
@@ -1004,7 +1022,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 return void res.status(401).json({ error: 'Invalid email or password' });
             }
             const bcrypt = await import('bcrypt');
-            const isValid = await bcrypt.default.compare(password, user.passwordHash);
+            const isValid = !!user.passwordHash && await bcrypt.default.compare(password, user.passwordHash);
             if (!isValid) {
                 void logAuthEvent(req, { method: 'mobile-email', event: 'wrong_password', ok: false, email, userId: user._id?.toString() });
                 return void res.status(401).json({ error: 'Invalid email or password' });
@@ -1149,7 +1167,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             }
             // Check password
             const bcrypt = await import('bcrypt');
-            const isValidPassword = await bcrypt.default.compare(password, user.passwordHash);
+            const isValidPassword = !!user.passwordHash && await bcrypt.default.compare(password, user.passwordHash);
             if (!isValidPassword) {
                 void logAuthEvent(req, { method: 'email', event: 'login_wrong_password', ok: false, email, userId: user._id?.toString() });
                 return void res.status(401).json({ error: 'Invalid email or password' });
@@ -1412,6 +1430,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             const parsed = authProfileSchema.safeParse(req.body);
             if (!parsed.success) return void res.status(400).json({ error: 'Invalid profile fields', fields: parsed.error.flatten().fieldErrors });
             const { password, ...profilePatch } = parsed.data;
+            if (password?.trim()) {
+                return void res.status(400).json({ code: 'USE_PASSWORD_SETTINGS', error: 'Use account password settings to update your password' });
+            }
             const existing: any = await pgFindUserById(userId);
             if (!existing) {
                 return void res.status(404).json({ error: 'User not found' });
@@ -1421,10 +1442,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 const other = await pgFindUserByEmail(changes.email);
                 if (other && String(other._id) !== userId) return void res.status(409).json({ error: 'Email is already in use' });
                 changes.emailVerified = false;
-            }
-            if (password && password.trim() !== '') {
-                const bcrypt = await import('bcrypt');
-                changes.passwordHash = await bcrypt.default.hash(password, 12);
             }
             // Write only submitted fields; a concurrent avatar/preferences save must not be overwritten.
             const user = await pgUpdateUser(userId, changes);
@@ -1477,70 +1494,107 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     };
     app.patch('/api/user/notification-settings', requireAuth, saveNotificationSettings);
     app.put('/api/user/notification-settings', requireAuth, saveNotificationSettings);
-    // Forgot password
-    app.post("/api/auth/forgot-password", async (req, res) => {
+    const validNewPassword = (password: unknown): password is string =>
+        typeof password === 'string' && password.length >= 8 && Buffer.byteLength(password, 'utf8') <= 72;
+    const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
+    const passwordMailLanguage = (req: import('express').Request) =>
+        typeof req.body?.language === 'string' ? req.body.language : req.get('Accept-Language');
+    const issuePasswordLink = async (
+        user: { _id: string; email: string }, transport: Parameters<typeof sendPasswordResetEmail>[0], language: string | undefined, purpose: 'setup' | 'reset',
+    ) => {
+        const token = randomBytes(32).toString('hex');
+        const stored = await passwordStore.pgStorePasswordResetToken({
+            id: String(user._id), email: user.email, tokenHash: tokenHash(token),
+            expires: new Date(Date.now() + PASSWORD_RESET_TTL_MS), purpose,
+        });
+        if (!stored) return false;
+        await sendPasswordResetEmail(transport, user.email, token, language, purpose);
+        return true;
+    };
+    const logPasswordMailFailure = (error: unknown) => {
+        // Provider errors may contain the recipient and the reset URL.
+        const code = (error as { code?: unknown } | null)?.code;
+        logger.error('Password mail request failed', { code: typeof code === 'number' ? code : undefined });
+    };
+    app.get('/api/auth/password', requireAuth, (req, res) => {
+        const user = (req as any).user;
+        const hasPassword = Boolean(user.passwordHash);
+        res.json({ hasPassword, canSetPassword: !hasPassword && !!user.email && !!user.emailVerified, email: user.email });
+    });
+    app.post('/api/auth/password/setup', requireAuth, async (req, res) => {
+        const user = (req as any).user;
+        if (user.passwordHash) return void res.status(409).json({ code: 'PASSWORD_ALREADY_SET' });
+        if (!user.email || !user.emailVerified) return void res.status(403).json({ code: 'VERIFIED_EMAIL_REQUIRED' });
+        const transport = passwordMailTransport();
+        if (!transport) return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE' });
         try {
-            const { email } = req.body;
-            logger.log(`🔑 Password reset request for: ${email}`);
-            const user: any = await pgFindUserByEmail(email);
-            if (!user) {
-                return void res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+            if (!await issuePasswordLink(user, transport, passwordMailLanguage(req), 'setup')) {
+                return void res.status(409).json({ code: 'PASSWORD_STATE_CHANGED' });
             }
-            const crypto = await import('crypto');
-            const resetToken = crypto.default.randomBytes(32).toString('hex');
-            const resetTokenHash = crypto.default.createHash('sha256').update(resetToken).digest('hex');
-            const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
-            // Store only the hash in DB — original token goes out via email only
-            user.resetPasswordToken = resetTokenHash;
-            (user as any).resetPasswordExpires = resetTokenExpiry;
-            const resetPatch = { resetPasswordToken: resetTokenHash, resetPasswordExpires: resetTokenExpiry };
-            await pgUpdateUser(String(user._id), resetPatch);
-            const sgMail = (await import('@sendgrid/mail')).default;
-            sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
-            const resetUrl = `https://themegaradio.com/reset-password?token=${resetToken}`;
-            const msg = {
-                to: email,
-                from: 'noreply@themegaradio.com',
-                subject: 'Reset Your Password - Mega Radio',
-                html: `
-          <div style="font-family: 'Ubuntu', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0E0E0E; color: white;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #FF4199; margin: 0;">Mega Radio</h1>
-            </div>
-            <div style="background-color: #1a1a1a; padding: 30px; border-radius: 10px;">
-              <h2 style="color: white; margin-top: 0;">Reset Your Password</h2>
-              <p style="color: #ccc; line-height: 1.6;">Click the button below to reset your password:</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetUrl}" style="background-color: #FF4199; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; display: inline-block;">Reset Password</a>
-              </div>
-              <p style="color: #888; font-size: 14px;">This link expires in 1 hour.</p>
-            </div>
-          </div>
-        `,
-            };
-            await sgMail.send(msg);
-            res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+            res.json({ sent: true });
+        } catch (error) {
+            logPasswordMailFailure(error);
+            res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE' });
         }
-        catch (error) {
-            res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+    });
+    app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+        const user = (req as any).user;
+        const { currentPassword, newPassword } = req.body || {};
+        if (!user.passwordHash) return void res.status(409).json({ code: 'PASSWORD_NOT_SET' });
+        if (!validNewPassword(newPassword)) return void res.status(400).json({ code: 'INVALID_NEW_PASSWORD' });
+        if (typeof currentPassword !== 'string' || !currentPassword || Buffer.byteLength(currentPassword, 'utf8') > 72) {
+            return void res.status(400).json({ code: 'INVALID_CURRENT_PASSWORD' });
         }
+        try {
+            const bcrypt = await import('bcrypt');
+            if (!await bcrypt.default.compare(currentPassword, user.passwordHash)) {
+                return void res.status(403).json({ code: 'INVALID_CURRENT_PASSWORD' });
+            }
+            const passwordHash = await bcrypt.default.hash(newPassword, 12);
+            if (!await passwordStore.pgChangeUserPassword(String(user._id), user.passwordHash, passwordHash)) {
+                return void res.status(409).json({ code: 'PASSWORD_STATE_CHANGED' });
+            }
+            res.json({ message: 'Password changed successfully.' });
+        } catch {
+            res.status(503).json({ code: 'PASSWORD_CHANGE_UNAVAILABLE' });
+        }
+    });
+    // Use a uniform response after lookup to protect account privacy.
+    app.post("/api/auth/forgot-password", async (req, res) => {
+        const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+        if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return void res.status(400).json({ error: 'Valid email is required' });
+        }
+        const transport = passwordMailTransport();
+        if (!transport) {
+            logger.error('Password reset mail unavailable: no mail transport is configured');
+            return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE', error: 'Password reset is temporarily unavailable' });
+        }
+        const message = 'If an account exists with this email, you will receive reset instructions.';
+        try {
+            const user = await pgFindUserByEmail(email);
+            if (!user) return void res.json({ message });
+            await issuePasswordLink(user, transport, passwordMailLanguage(req), user.passwordHash ? 'reset' : 'setup');
+        } catch (error) {
+            logPasswordMailFailure(error);
+        }
+        res.json({ message });
     });
     // Reset password with token
     app.post("/api/auth/reset-password", async (req, res) => {
         try {
             const { token, newPassword } = req.body;
-            if (typeof token !== 'string' || !token || token.length > 512 || typeof newPassword !== 'string' || newPassword.length < 8 || Buffer.byteLength(newPassword, 'utf8') > 72) {
+            if (typeof token !== 'string' || !token || token.length > 512 || !validNewPassword(newPassword)) {
                 return void res.status(400).json({ error: 'Invalid password' });
             }
-            const crypto = await import('crypto');
-            const tokenHash = crypto.default.createHash('sha256').update(String(token)).digest('hex');
-            const user: any = await pgFindUserByResetToken(tokenHash);
+            const hash = tokenHash(token);
+            const user = await pgFindUserByResetToken(hash);
             if (!user) {
                 return void res.status(400).json({ error: 'Invalid or expired reset token' });
             }
             const bcrypt = await import('bcrypt');
             const passwordHash = await bcrypt.default.hash(newPassword, 12);
-            if (!await pgResetUserPassword(tokenHash, passwordHash)) return void res.status(400).json({ error: 'Invalid or expired reset token' });
+            if (!await pgResetUserPassword(hash, passwordHash)) return void res.status(400).json({ error: 'Invalid or expired reset token' });
             res.json({ message: 'Password has been reset successfully.' });
         }
         catch (error) {

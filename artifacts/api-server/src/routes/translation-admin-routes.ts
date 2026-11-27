@@ -1840,7 +1840,7 @@ ${keysText}`;
                 return void res.status(401).json({ error: 'Authentication required' });
             }
             let markedCount = 0;
-            markedCount = await pgMarkAllNotificationsRead(currentUserId);
+            markedCount = await pgMarkAllNotificationsRead(currentUserId, req.query.category === 'desktop' ? 'desktop' : 'all');
             await CacheManager.clearByPattern(`notifications:postgres:${currentUserId}:`).catch(() => {});
             // logger.log(`📖 Marked ${result.modifiedCount} notifications as read for user ${currentUserId}`);
             res.json({ success: true, markedCount });

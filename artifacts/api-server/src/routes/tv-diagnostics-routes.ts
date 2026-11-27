@@ -5,6 +5,7 @@ import {
   TV_DIAGNOSTICS_PATH,
 } from "../lib/tv-diagnostics-cors";
 import {
+  isTvDiagnosticPlatform,
   validateTvDiagnosticBatch,
   type TvCounterBatch,
 } from "../lib/tv-diagnostics-policy";
@@ -69,9 +70,14 @@ export function createTvDiagnosticHandlers(
     try {
       // Keep pseudonymous GA4 metadata out of persistence, even the store boundary.
       const { analytics, batchId, ...anonymous } = batch;
-      await store.record({ ...anonymous, events });
+      if (batch.platform === "macos") {
+        // Desktop usage goes to GA4 without creating TV diagnostic counts.
+        if (!relayTvUsage(batch)) return void res.sendStatus(503);
+      } else {
+        await store.record({ ...anonymous, platform: batch.platform, events });
+        if (analytics) relayTvUsage(batch);
+      }
       completed.set(batchId, now() + 600000);
-      if (analytics) relayTvUsage({ ...batch, events });
       res.sendStatus(204);
     } catch {
       // Failed writes remain retryable; never acknowledge before persistence.
@@ -88,7 +94,7 @@ export function createTvDiagnosticHandlers(
       !Number.isInteger(days) ||
       days < 1 ||
       days > 30 ||
-      (platform !== undefined && platform !== "tizen" && platform !== "webos")
+      (platform !== undefined && !isTvDiagnosticPlatform(platform))
     )
       return void res.status(400).json({ error: "Invalid diagnostic filter" });
     try {

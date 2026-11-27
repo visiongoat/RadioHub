@@ -1,4 +1,4 @@
-export const CHAT_REACTIONS = new Set(['👍','❤️','😂','😮','😢','🙏']);
+export const CHAT_REACTIONS = new Set(['👍','❤️','😂','😮','😢','🙏','♫']);
 export function validChatReaction(emoji:unknown):emoji is string|null{return emoji===null||typeof emoji==='string'&&CHAT_REACTIONS.has(emoji);}
 /** Idempotent set/remove (not a toggle). The actor and display identity are server-owned.
  * Atomic JSON replacement serializes concurrent users without losing reactions. */

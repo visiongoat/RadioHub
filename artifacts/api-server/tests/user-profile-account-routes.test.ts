@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { createHash } from 'node:crypto';
 
 const ownerId = '507f1f77bcf86cd799439011';
 const otherId = '507f1f77bcf86cd799439012';
@@ -20,6 +21,9 @@ let deletedKeys: string[] = [];
 let invalidImage = false;
 let uploadFailure = false;
 let resetAvailable = false;
+let passwordLink: { id: string; email: string; tokenHash: string; expires: Date; purpose: string } | null;
+const passwordMails: Array<{ to: string; subject: string; text: string }> = [];
+let mailFails = false;
 let repairedHandle: string | null = null;
 const source = (id = ownerId) => ({ _id: id, id, username: id === ownerId ? 'listener' : 'other', fullName: 'Listener',
   email: id === ownerId ? 'owner@example.test' : 'other@example.test', emailVerified: true, status: 'active',
@@ -46,6 +50,12 @@ mock.module('../src/data/postgres-user-store', { namedExports: {
   pgFindUserByEmail: async (email: string) => [...users.values()].find(u => u.email.toLowerCase() === email.toLowerCase()) || null,
   pgFindUserByIdentity: async () => null, pgFindUserByResetToken: async () => resetAvailable ? source() : null,
   pgResetUserPassword: async () => { if (!resetAvailable) return false; resetAvailable = false; return true; },
+  pgStorePasswordResetToken: async (input: NonNullable<typeof passwordLink>) => { passwordLink = input; return true; },
+  pgChangeUserPassword: async (id: string, previousHash: string, nextHash: string) => {
+    const user = users.get(id);
+    if (user?.passwordHash !== previousHash) return false;
+    user.passwordHash = nextHash; return true;
+  },
   pgListUsers: async (options: Record<string, any>) => {
     discoveryQueries.push(options);
     if (databaseFails) throw new Error('private-db-detail');
@@ -70,7 +80,14 @@ mock.module('../src/services/community-profiles', { namedExports: {
 } });
 mock.module('../src/data/postgres-engagement-store', { namedExports: { pgFollowPage: async () => ({}), pgIsFollowing: async () => false } });
 mock.module('../src/data/postgres-notification-store', { namedExports: { notificationStore: 'postgres', pgCreateNotification: async () => {} } });
-mock.module('bcrypt', { defaultExport: { hash: async (password: string) => `hashed:${password}` } });
+mock.module('bcrypt', { defaultExport: {
+  hash: async (password: string) => `hashed:${password}`,
+  compare: async (password: string, hash: string) => password === 'CurrentPassword' && hash === 'stored-hash',
+} });
+mock.module('@sendgrid/mail', { defaultExport: { setApiKey() {}, send: async (mail: typeof passwordMails[number]) => {
+  if (mailFails) throw new Error('fixture provider unavailable');
+  passwordMails.push(mail); return [{ statusCode: 202 }];
+} } });
 mock.module('../src/services/s3-storage', { namedExports: {
   uploadToS3: async (key: string) => { if (uploadFailure) throw new Error('upload-network'); return `https://fixture-bucket.s3.eu-north-1.amazonaws.com/${key}`; },
   deleteFromS3: async (key: string) => { deletedKeys.push(key); },
@@ -103,6 +120,7 @@ beforeEach(() => {
   discoveryQueries.length = 0; discoveryUsers = [];
   databaseFails = false; revokeFails = false; revokeFinished = false; deletedKeys = []; invalidImage = false; uploadFailure = false;
   resetAvailable = false;
+  passwordLink = null; passwordMails.length = 0; mailFails = false;
   repairedHandle = null;
   signups.length = 0;
   process.env.AWS_BUCKET_NAME = 'fixture-bucket'; process.env.AWS_REGION = 'eu-north-1';
@@ -214,11 +232,55 @@ test('profile validation rejects invalid types, weak/oversize passwords and pref
   }
   assert.equal(writes.length, 0);
 });
-test('password update hashes valid password while blank leaves original hash untouched', async () => {
+test('profile cannot set a password without the dedicated ownership check', async () => {
   assert.equal((await request('/api/auth/profile', 'PUT', { password: '   ', fullName: 'Listener' })).status, 200);
   assert.equal(writes[0].patch.passwordHash, undefined);
-  assert.equal((await request('/api/auth/profile', 'PUT', { password: 'LongEnough123' })).status, 200);
-  assert.equal(writes[1].patch.passwordHash, 'hashed:LongEnough123');
+  assert.equal((await request('/api/auth/profile', 'PUT', { password: 'LongEnough123' })).status, 400);
+  assert.equal(writes.length, 1);
+  assert.equal(users.get(ownerId).passwordHash, 'stored-hash');
+});
+test('a Google-only account creates a password through its verified inbox', async () => {
+  const previousKey = process.env.SENDGRID_API_KEY;
+  process.env.SENDGRID_API_KEY = 'SG.test';
+  Object.assign(users.get(ownerId), { passwordHash: null, googleId: 'google-fixture' });
+  try {
+    assert.equal((await request('/api/auth/password', 'GET', undefined, null)).status, 401);
+    assert.deepEqual(await (await request('/api/auth/password')).json(), {
+      hasPassword: false, canSetPassword: true, email: 'owner@example.test',
+    });
+    assert.equal((await request('/api/auth/change-password', 'POST', { newPassword: 'NewPassword123' })).status, 409);
+    const response = await request('/api/auth/password/setup', 'POST', { language: 'tr-TR', email: 'other@example.test' });
+    assert.equal(response.status, 200);
+    assert.equal(passwordMails[0].to, 'owner@example.test');
+    assert.equal(passwordMails[0].subject, 'MegaRadio şifreni oluştur');
+    const link = new URL(passwordMails[0].text.match(/https:\/\/\S+/)![0]);
+    assert.equal(link.pathname, '/reset-password');
+    assert.equal(link.searchParams.get('mode'), 'setup');
+    const token = link.searchParams.get('token')!;
+    assert.equal(passwordLink?.tokenHash, createHash('sha256').update(token).digest('hex'));
+    assert.equal(passwordLink?.purpose, 'setup');
+    assert.equal(users.get(ownerId).passwordHash, null);
+    mailFails = true;
+    assert.equal((await request('/api/auth/password/setup', 'POST', {})).status, 503);
+    users.get(ownerId).emailVerified = false;
+    assert.equal((await request('/api/auth/password/setup', 'POST', {})).status, 403);
+    assert.equal(passwordMails.length, 1);
+  } finally {
+    if (previousKey === undefined) delete process.env.SENDGRID_API_KEY;
+    else process.env.SENDGRID_API_KEY = previousKey;
+  }
+});
+test('a Google-linked account with a password must verify its current password to change it', async () => {
+  users.get(ownerId).googleId = 'google-fixture';
+  assert.deepEqual(await (await request('/api/auth/password')).json(), {
+    hasPassword: true, canSetPassword: false, email: 'owner@example.test',
+  });
+  assert.equal((await request('/api/auth/password/setup', 'POST', {})).status, 409);
+  const change = { currentPassword: 'CurrentPassword', newPassword: 'NewPassword123' };
+  assert.equal((await request('/api/auth/change-password', 'POST', { ...change, currentPassword: 'wrong' })).status, 403);
+  assert.equal(users.get(ownerId).passwordHash, 'stored-hash');
+  assert.equal((await request('/api/auth/change-password', 'POST', change)).status, 200);
+  assert.equal(users.get(ownerId).passwordHash, 'hashed:NewPassword123');
 });
 test('email changes normalize and revoke stale verification, duplicate email is409', async () => {
   assert.equal((await request('/api/auth/profile', 'PUT', { email: ' New@Example.Test ' })).status, 200);

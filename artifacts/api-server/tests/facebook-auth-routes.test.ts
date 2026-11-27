@@ -47,11 +47,16 @@ before(async () => {
     return savedFetch(input, init);
   }) as any;
   const { registerFacebookAuthRoutes } = await import('../src/routes/facebook-auth-routes');
+  const { registerDesktopAuthRoutes } = await import('../src/routes/desktop-auth-routes');
   const app = express(); app.use(express.json());
   app.use((req, _res, next) => { Object.defineProperty(req, 'ip', { value: `127.0.0.${fixtureIp}` }); next(); });
   app.use(session({ secret: 'fixture-session-secret', resave: false, saveUninitialized: false }));
   app.use((req: any, _res, next) => { req.login = (_user: any, cb: any) => cb(); next(); });
   registerFacebookAuthRoutes(app, { generateAuthToken: async () => { tokens++; return 'fixture-mobile-token'; } });
+  registerDesktopAuthRoutes(app, async (id, type, name) => {
+    assert.deepEqual([id, type, name], [fixtureUser._id, 'desktop', 'MegaRadio Desktop']);
+    return 'fixture-desktop-token';
+  });
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(r => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -157,4 +162,34 @@ test('untrusted return URLs and provider error details never enter the callback 
   assert.equal(url.hostname, 'themegaradio.com');
   assert.equal(url.searchParams.get('error'), 'facebook_auth_failed');
   assert.equal(url.href.includes('fixture'), false); assert.equal(url.href.includes('outside.test'), false);
+});
+
+test('desktop Facebook returns a proof-bound single-use code without changing the mobile flow', async () => {
+  const verifier = 'v'.repeat(64);
+  const state = 's'.repeat(43);
+  const redirect = 'http://127.0.0.1:49271/desktop-auth/callback';
+  const query = new URLSearchParams({ provider: 'facebook', redirect_uri: redirect, state, code_challenge: facebookHash(verifier) });
+  const start = await fetch(base + '/api/auth/desktop/start?' + query, { redirect: 'manual' });
+  assert.equal(start.status, 303);
+  const cookie = start.headers.get('set-cookie')!.split(';')[0];
+  const authorize = await fetch(base + start.headers.get('location'), { redirect: 'manual', headers: { Cookie: cookie } });
+  const providerState = new URL(authorize.headers.get('location')!).searchParams.get('state');
+  const response = await callback({ state: providerState, cookie, url: new URL(authorize.headers.get('location')!) });
+  assert.equal(response.status, 303);
+  const returned = new URL(response.headers.get('location')!);
+  assert.equal(returned.origin + returned.pathname, redirect);
+  assert.equal(returned.searchParams.get('desktop_state'), state);
+  assert.equal(returned.searchParams.get('auth_token'), null);
+  const code = returned.searchParams.get('desktop_code');
+  assert.match(code || '', /^[A-Za-z0-9_-]{43}$/);
+  const exchange = (codeVerifier: string) => fetch(base + '/api/auth/desktop/exchange', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, codeVerifier }),
+  });
+  assert.equal((await exchange('x'.repeat(64))).status, 401);
+  const results = await Promise.all([exchange(verifier), exchange(verifier)]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 401]);
+  const session = await results.find(r => r.ok)!.json();
+  assert.equal(session.token, 'fixture-desktop-token');
+  assert.equal(session.user._id, fixtureUser._id);
+  assert.equal(session.user.passwordHash, undefined);
 });
