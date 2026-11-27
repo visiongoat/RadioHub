@@ -2,6 +2,15 @@ import SendGrid from '@sendgrid/mail';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60_000;
 
+type PasswordMailTransport = { provider: 'resend' | 'sendgrid'; apiKey: string };
+
+export function passwordMailTransport(): PasswordMailTransport | undefined {
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  if (resendKey) return { provider: 'resend', apiKey: resendKey };
+  const sendGridKey = process.env.SENDGRID_API_KEY?.trim();
+  if (sendGridKey) return { provider: 'sendgrid', apiKey: sendGridKey };
+}
+
 const copy = {
   en: {
     subject: 'Reset your MegaRadio password',
@@ -93,9 +102,21 @@ export function passwordResetEmail(email: string, token: string, language?: stri
   };
 }
 
-export async function sendPasswordResetEmail(apiKey: string, email: string, token: string, language?: string, purpose: 'setup' | 'reset' = 'reset') {
-  SendGrid.setApiKey(apiKey);
-  const [response] = await SendGrid.send(passwordResetEmail(email, token, language, purpose));
+export async function sendPasswordResetEmail(transport: PasswordMailTransport, email: string, token: string, language?: string, purpose: 'setup' | 'reset' = 'reset') {
+  const mail = passwordResetEmail(email, token, language, purpose);
+  if (transport.provider === 'resend') {
+    const { from, to, subject, text, html } = mail;
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${transport.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: `${from.name} <${from.email}>`, to: [to], subject, text, html }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) throw Object.assign(new Error('Password reset mail was not accepted'), { code: response.status });
+    return;
+  }
+  SendGrid.setApiKey(transport.apiKey);
+  const [response] = await SendGrid.send(mail);
   if (response.statusCode !== 202) {
     throw Object.assign(new Error('Password reset mail was not accepted'), { code: response.statusCode });
   }

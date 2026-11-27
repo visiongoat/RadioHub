@@ -9,7 +9,7 @@ import { profileFieldsSchema, authProfileSchema, notificationSettingsSchema } fr
 import { getPostgresPool } from '../postgres-runtime';
 import { pgListAuthEvents } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
-import { PASSWORD_RESET_TTL_MS, sendPasswordResetEmail } from '../services/password-reset-mail';
+import { PASSWORD_RESET_TTL_MS, passwordMailTransport, sendPasswordResetEmail } from '../services/password-reset-mail';
 import { publicUserIdentity } from '../utils/public-user-identity';
 import { needsGeneratedHandle } from '../utils/user-handle';
 import { invalidateCommunityProfiles } from '../services/community-profiles';
@@ -1485,7 +1485,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     const passwordMailLanguage = (req: import('express').Request) =>
         typeof req.body?.language === 'string' ? req.body.language : req.get('Accept-Language');
     const issuePasswordLink = async (
-        user: { _id: string; email: string }, apiKey: string, language: string | undefined, purpose: 'setup' | 'reset',
+        user: { _id: string; email: string }, transport: Parameters<typeof sendPasswordResetEmail>[0], language: string | undefined, purpose: 'setup' | 'reset',
     ) => {
         const token = randomBytes(32).toString('hex');
         const stored = await passwordStore.pgStorePasswordResetToken({
@@ -1493,7 +1493,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             expires: new Date(Date.now() + PASSWORD_RESET_TTL_MS), purpose,
         });
         if (!stored) return false;
-        await sendPasswordResetEmail(apiKey, user.email, token, language, purpose);
+        await sendPasswordResetEmail(transport, user.email, token, language, purpose);
         return true;
     };
     const logPasswordMailFailure = (error: unknown) => {
@@ -1510,10 +1510,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const user = (req as any).user;
         if (user.passwordHash) return void res.status(409).json({ code: 'PASSWORD_ALREADY_SET' });
         if (!user.email || !user.emailVerified) return void res.status(403).json({ code: 'VERIFIED_EMAIL_REQUIRED' });
-        const apiKey = process.env.SENDGRID_API_KEY?.trim();
-        if (!apiKey) return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE' });
+        const transport = passwordMailTransport();
+        if (!transport) return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE' });
         try {
-            if (!await issuePasswordLink(user, apiKey, passwordMailLanguage(req), 'setup')) {
+            if (!await issuePasswordLink(user, transport, passwordMailLanguage(req), 'setup')) {
                 return void res.status(409).json({ code: 'PASSWORD_STATE_CHANGED' });
             }
             res.json({ sent: true });
@@ -1550,16 +1550,16 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return void res.status(400).json({ error: 'Valid email is required' });
         }
-        const apiKey = process.env.SENDGRID_API_KEY?.trim();
-        if (!apiKey) {
-            logger.error('Password reset mail unavailable: SendGrid is not configured');
+        const transport = passwordMailTransport();
+        if (!transport) {
+            logger.error('Password reset mail unavailable: no mail transport is configured');
             return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE', error: 'Password reset is temporarily unavailable' });
         }
         const message = 'If an account exists with this email, you will receive reset instructions.';
         try {
             const user = await pgFindUserByEmail(email);
             if (!user) return void res.json({ message });
-            await issuePasswordLink(user, apiKey, passwordMailLanguage(req), user.passwordHash ? 'reset' : 'setup');
+            await issuePasswordLink(user, transport, passwordMailLanguage(req), user.passwordHash ? 'reset' : 'setup');
         } catch (error) {
             logPasswordMailFailure(error);
         }
