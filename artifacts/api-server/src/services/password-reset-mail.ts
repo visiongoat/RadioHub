@@ -8,7 +8,7 @@ export function passwordMailTransport(): PasswordMailTransport | undefined {
   const resendKey = process.env.RESEND_API_KEY?.trim();
   if (resendKey) return { provider: 'resend', apiKey: resendKey };
   const sendGridKey = process.env.SENDGRID_API_KEY?.trim();
-  if (sendGridKey) return { provider: 'sendgrid', apiKey: sendGridKey };
+  return sendGridKey ? { provider: 'sendgrid', apiKey: sendGridKey } : undefined;
 }
 
 const copy = {
