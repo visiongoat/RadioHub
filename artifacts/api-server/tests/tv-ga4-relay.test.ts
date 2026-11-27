@@ -61,6 +61,25 @@ test("analytics metadata is accepted only after explicit usage consent and never
   ])
     assert.equal(validateTvDiagnosticBatch({ ...usage, analytics: a }), null);
 });
+test("macOS usage is opt-in and isolated from TV dimensions and event names", () => {
+  const candidate = { ...usage, platform: "macos", appVersion: "1.2.3",
+    events: [{ ...usage.events[0], route: "messages" }] };
+  const desktop = validateTvDiagnosticBatch(candidate);
+  assert.ok(desktop);
+  const payload = tvGa4Payload(desktop);
+  assert.ok(payload);
+  assert.equal(payload.events[0].name, "desktop_screen_view");
+  assert.equal(payload.events[0].params.client_surface, "macos");
+  assert.equal(payload.events[0].params.desktop_app_version, "1.2.3");
+  assert.equal(payload.events[0].params.tv_platform, undefined);
+  assert.equal(payload.events[0].params.desktop_screen, "messages");
+  assert.equal(validateTvDiagnosticBatch({ ...candidate, platform: "tizen" }), null);
+  assert.equal(validateTvDiagnosticBatch({ ...candidate, events: [{ ...candidate.events[0], route: "/messages/private" }] }), null);
+  assert.equal(validateTvDiagnosticBatch({ ...candidate, analytics: undefined }), null);
+  assert.equal(validateTvDiagnosticBatch({ ...candidate, consent: { diagnostics: false, analytics: false } }), null);
+  assert.equal(validateTvDiagnosticBatch({ ...candidate, consent: { diagnostics: true, analytics: true } }), null);
+});
+
 test("GA4 payload has usage only, denied ad consent and measured elapsed time exactly once", () => {
   const payload = tvGa4Payload(usage)!;
   assert.equal(payload.client_id, "12297829382473034411.12297829382473034411");

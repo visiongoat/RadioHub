@@ -47,6 +47,7 @@ export const TV_ROUTES = [
   "genres",
   "other",
 ] as const;
+const MACOS_ROUTES = ["messages", "profile", "records", "stations", "about"];
 export const TV_MODULES = [
   "main",
   "audio",
@@ -100,13 +101,19 @@ export type TvAnalyticsMetadata = {
 };
 export type TvDiagnosticBatch = {
   batchId: string;
-  platform: "tizen" | "webos";
+  platform: TvDiagnosticPlatform | "macos";
   appVersion: string;
   bundleVersion: string;
   consent: { diagnostics: boolean; analytics: boolean };
   events: TvDiagnosticEvent[];
   analytics?: TvAnalyticsMetadata;
 };
+export const TV_DIAGNOSTIC_PLATFORMS = ["tizen", "webos"] as const;
+type TvDiagnosticPlatform = (typeof TV_DIAGNOSTIC_PLATFORMS)[number];
+export function isTvDiagnosticPlatform(value: unknown): value is TvDiagnosticPlatform {
+  return TV_DIAGNOSTIC_PLATFORMS.some(platform => platform === value);
+}
+
 export function validateTvDiagnosticBatch(
   value: unknown,
 ): TvDiagnosticBatch | null {
@@ -123,7 +130,7 @@ export function validateTvDiagnosticBatch(
     ]) ||
     typeof value.batchId !== "string" ||
     !/^b-[a-f0-9]{32}$/.test(value.batchId) ||
-    !["tizen", "webos"].includes(value.platform) ||
+    (value.platform !== "macos" && !isTvDiagnosticPlatform(value.platform)) ||
     !validAppVersion(value.appVersion) ||
     !validBundleVersion(value.bundleVersion)
   )
@@ -142,6 +149,7 @@ export function validateTvDiagnosticBatch(
     value.events.length > 10
   )
     return null;
+  const routes: readonly string[] = value.platform === "macos" ? [...TV_ROUTES, ...MACOS_ROUTES] : TV_ROUTES;
   const events: TvDiagnosticEvent[] = [];
   for (const e of value.events) {
     if (
@@ -149,7 +157,7 @@ export function validateTvDiagnosticBatch(
       !keys(e, ["event", "code", "route", "module", "line", "column", "durationMsec"]) ||
       !(TV_EVENTS as readonly string[]).includes(e.event) ||
       !(TV_CODES as readonly string[]).includes(e.code) ||
-      !(TV_ROUTES as readonly string[]).includes(e.route)
+      !routes.includes(e.route)
     )
       return null;
     if (usage.has(e.event) ? !c.analytics || e.code !== "none" : !c.diagnostics)
@@ -197,6 +205,7 @@ export function validateTvDiagnosticBatch(
       engagementTimeMsec: a.engagementTimeMsec,
     };
   }
+  if (value.platform === "macos" && (!analytics || c.diagnostics)) return null;
   return {
     batchId: value.batchId,
     platform: value.platform,
@@ -208,4 +217,4 @@ export function validateTvDiagnosticBatch(
   };
 }
 
-export type TvCounterBatch = Omit<TvDiagnosticBatch, "analytics" | "batchId">;
+export type TvCounterBatch = Omit<TvDiagnosticBatch, "analytics" | "batchId" | "platform"> & { platform: TvDiagnosticPlatform };

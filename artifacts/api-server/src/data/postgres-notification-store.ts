@@ -39,6 +39,7 @@ export async function pgCreateNotification(input: NotificationInput): Promise<an
 
 export const notificationCategories = {
   all: null,
+  desktop: ['follow', 'unfollow', 'group_invitation', 'new_message', 'station_mention', 'new_station', 'system', 'promotional', 'comment_reply'],
   social: ['follow', 'unfollow', 'group_invitation', 'new_message', 'station_mention'],
   messages: ['new_message', 'group_invitation'],
   mentions: ['station_mention'],
@@ -54,6 +55,9 @@ const visibleNotificationSql = `user_id=$1 AND (
   OR (type IN ('system','promotional','comment_reply') AND created_at>=now()-interval '30 days'))
   AND (expires_at IS NULL OR expires_at>now())`;
 
+// Older favorite removal routes filed their own confirmation as a system notice.
+const desktopNotificationSql = "NOT (type='system' AND title IN ('💔 Station Removed from Favorites','Station Removed from Favorites'))";
+
 export async function pgListNotifications(userId: string, page: number, limit: number, category: NotificationCategory = 'all'): Promise<any> {
   if (!Object.hasOwn(notificationCategories, category)) throw new Error('Invalid notification category');
   page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
@@ -64,22 +68,27 @@ export async function pgListNotifications(userId: string, page: number, limit: n
       `SELECT n.*, CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('_id',u.id,'fullName',u.full_name,'username',u.username,'avatar',u.avatar,'profileImageUrl',u.source->>'profileImageUrl') END AS sender
        FROM (SELECT * FROM user_notifications WHERE ${visibleNotificationSql}
        AND ($4::text[] IS NULL OR type=ANY($4::text[]))
+       AND (NOT $5::boolean OR ${desktopNotificationSql})
        ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3) n LEFT JOIN users u ON u.id=COALESCE(n.from_user_id,n.data->>'followerId',n.data->>'userId') ORDER BY n.created_at DESC,n.id DESC`,
-      [userId, limit, offset, notificationCategories[category]],
+      [userId, limit, offset, notificationCategories[category], category === 'desktop'],
     ),
-    getPostgresPool().query<{ type: string; count: string; unread: string }>(
-      `SELECT type,count(*)::text count,count(*) FILTER (WHERE is_read=false)::text unread
+    getPostgresPool().query<{ type: string; count: string; unread: string; desktop_count: string; desktop_unread: string }>(
+      `SELECT type,count(*)::text count,count(*) FILTER (WHERE is_read=false)::text unread,
+       count(*) FILTER (WHERE ${desktopNotificationSql})::text desktop_count,
+       count(*) FILTER (WHERE is_read=false AND ${desktopNotificationSql})::text desktop_unread
        FROM user_notifications WHERE ${visibleNotificationSql} GROUP BY type`,
       [userId],
     ),
   ]);
   const categoryCounts = Object.fromEntries(Object.entries(notificationCategories).map(([key, types]) => [key,
-    totals.rows.filter(row => types === null || (types as readonly string[]).includes(row.type)).reduce((sum,row) => sum + Number(row.count),0),
+    totals.rows.filter(row => types === null || (types as readonly string[]).includes(row.type)).reduce((sum,row) => sum + Number(key === 'desktop' ? row.desktop_count : row.count),0),
   ]));
   const total = categoryCounts[category];
   return { notifications: rows.rows.map(shape), pagination: {
     page, limit, total, totalPages: Math.ceil(total / limit),
-  }, categoryCounts, unreadCount: totals.rows.reduce((sum,row) => sum + Number(row.unread),0) };
+  }, categoryCounts, desktopScoped: category === 'desktop', unreadCount: totals.rows
+    .filter(row => category !== 'desktop' || (notificationCategories.desktop as readonly string[]).includes(row.type))
+    .reduce((sum,row) => sum + Number(category === 'desktop' ? row.desktop_unread : row.unread),0) };
 }
 
 export async function pgMarkNotificationRead(userId: string, id: string): Promise<any | null> {
@@ -90,10 +99,11 @@ export async function pgMarkNotificationRead(userId: string, id: string): Promis
   return result.rows[0] ? shape(result.rows[0]) : null;
 }
 
-export async function pgMarkAllNotificationsRead(userId: string): Promise<number> {
+export async function pgMarkAllNotificationsRead(userId: string, scope: 'all' | 'desktop' = 'all'): Promise<number> {
   const result = await getPostgresPool().query(
-    "UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND is_read=false",
-    [userId],
+    `UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND is_read=false
+     AND ($2::text[] IS NULL OR type=ANY($2::text[])) AND (NOT $3::boolean OR ${desktopNotificationSql})`,
+    [userId, notificationCategories[scope], scope === 'desktop'],
   );
   return result.rowCount || 0;
 }
