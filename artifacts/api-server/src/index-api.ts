@@ -301,6 +301,8 @@ app.use('/api/auth/google', authLimiter);
 app.use('/api/auth/token-session', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/password/setup', authLimiter);
+app.use('/api/auth/change-password', authLimiter);
 app.use('/api/admin/login', authLimiter);
 
 app.use(async (req, res, next) => {

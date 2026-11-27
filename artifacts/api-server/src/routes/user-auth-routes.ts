@@ -4,10 +4,12 @@ import {googleIdentity, canLinkGoogleAccount} from '../auth/google-identity-poli
 import { pgListeningTotalMinutes } from '../data/postgres-listening-store';
 import { subscriptionAccess } from '@workspace/db-shared/subscription-access';
 import type { Express } from "express";
+import { createHash, randomBytes } from 'node:crypto';
 import { profileFieldsSchema, authProfileSchema, notificationSettingsSchema } from '@workspace/api-zod';
 import { getPostgresPool } from '../postgres-runtime';
 import { pgListAuthEvents } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
+import { PASSWORD_RESET_TTL_MS, sendPasswordResetEmail } from '../services/password-reset-mail';
 import { publicUserIdentity } from '../utils/public-user-identity';
 import { needsGeneratedHandle } from '../utils/user-handle';
 import { invalidateCommunityProfiles } from '../services/community-profiles';
@@ -25,6 +27,7 @@ import { logAuthEvent } from '../auth/auth-event-logger';
 import { verifyMobileGoogleToken, verifyMobileAppleToken } from '../auth/mobile-social-verification';
 import { deleteUserAuthTokens, findActiveAuthToken, revokeAuthToken } from '../data/auth-token-store';
 import { newPublicUserId, pgCreateUser, pgDeleteUser, pgFindUserByEmail, pgFindUserById, pgFindUserByIdentity, pgFindUserByResetToken, pgResetUserPassword, pgListUsers, pgRecentUserActivity, pgUpdateUser, pgUserManagementDetail, pgUserManagementStats, pgUserSocialByEmail, pgUserFollowState, pgUserSlugExists, userStore, } from '../data/postgres-user-store';
+import * as passwordStore from '../data/postgres-user-store';
 import { UserEngagementService, engagementStore } from '../services/user-engagement-service';
 import { pgFollowPage, pgIsFollowing } from '../data/postgres-engagement-store';
 import { notificationStore, pgCreateNotification } from '../data/postgres-notification-store';
@@ -1004,7 +1007,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 return void res.status(401).json({ error: 'Invalid email or password' });
             }
             const bcrypt = await import('bcrypt');
-            const isValid = await bcrypt.default.compare(password, user.passwordHash);
+            const isValid = !!user.passwordHash && await bcrypt.default.compare(password, user.passwordHash);
             if (!isValid) {
                 void logAuthEvent(req, { method: 'mobile-email', event: 'wrong_password', ok: false, email, userId: user._id?.toString() });
                 return void res.status(401).json({ error: 'Invalid email or password' });
@@ -1149,7 +1152,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             }
             // Check password
             const bcrypt = await import('bcrypt');
-            const isValidPassword = await bcrypt.default.compare(password, user.passwordHash);
+            const isValidPassword = !!user.passwordHash && await bcrypt.default.compare(password, user.passwordHash);
             if (!isValidPassword) {
                 void logAuthEvent(req, { method: 'email', event: 'login_wrong_password', ok: false, email, userId: user._id?.toString() });
                 return void res.status(401).json({ error: 'Invalid email or password' });
@@ -1412,6 +1415,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             const parsed = authProfileSchema.safeParse(req.body);
             if (!parsed.success) return void res.status(400).json({ error: 'Invalid profile fields', fields: parsed.error.flatten().fieldErrors });
             const { password, ...profilePatch } = parsed.data;
+            if (password?.trim()) {
+                return void res.status(400).json({ code: 'USE_PASSWORD_SETTINGS', error: 'Use account password settings to update your password' });
+            }
             const existing: any = await pgFindUserById(userId);
             if (!existing) {
                 return void res.status(404).json({ error: 'User not found' });
@@ -1421,10 +1427,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 const other = await pgFindUserByEmail(changes.email);
                 if (other && String(other._id) !== userId) return void res.status(409).json({ error: 'Email is already in use' });
                 changes.emailVerified = false;
-            }
-            if (password && password.trim() !== '') {
-                const bcrypt = await import('bcrypt');
-                changes.passwordHash = await bcrypt.default.hash(password, 12);
             }
             // Write only submitted fields; a concurrent avatar/preferences save must not be overwritten.
             const user = await pgUpdateUser(userId, changes);
@@ -1477,70 +1479,107 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     };
     app.patch('/api/user/notification-settings', requireAuth, saveNotificationSettings);
     app.put('/api/user/notification-settings', requireAuth, saveNotificationSettings);
-    // Forgot password
-    app.post("/api/auth/forgot-password", async (req, res) => {
+    const validNewPassword = (password: unknown): password is string =>
+        typeof password === 'string' && password.length >= 8 && Buffer.byteLength(password, 'utf8') <= 72;
+    const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
+    const passwordMailLanguage = (req: import('express').Request) =>
+        typeof req.body?.language === 'string' ? req.body.language : req.get('Accept-Language');
+    const issuePasswordLink = async (
+        user: { _id: string; email: string }, apiKey: string, language: string | undefined, purpose: 'setup' | 'reset',
+    ) => {
+        const token = randomBytes(32).toString('hex');
+        const stored = await passwordStore.pgStorePasswordResetToken({
+            id: String(user._id), email: user.email, tokenHash: tokenHash(token),
+            expires: new Date(Date.now() + PASSWORD_RESET_TTL_MS), purpose,
+        });
+        if (!stored) return false;
+        await sendPasswordResetEmail(apiKey, user.email, token, language, purpose);
+        return true;
+    };
+    const logPasswordMailFailure = (error: unknown) => {
+        // Provider errors may contain the recipient and the reset URL.
+        const code = (error as { code?: unknown } | null)?.code;
+        logger.error('Password mail request failed', { code: typeof code === 'number' ? code : undefined });
+    };
+    app.get('/api/auth/password', requireAuth, (req, res) => {
+        const user = (req as any).user;
+        const hasPassword = Boolean(user.passwordHash);
+        res.json({ hasPassword, canSetPassword: !hasPassword && !!user.email && !!user.emailVerified, email: user.email });
+    });
+    app.post('/api/auth/password/setup', requireAuth, async (req, res) => {
+        const user = (req as any).user;
+        if (user.passwordHash) return void res.status(409).json({ code: 'PASSWORD_ALREADY_SET' });
+        if (!user.email || !user.emailVerified) return void res.status(403).json({ code: 'VERIFIED_EMAIL_REQUIRED' });
+        const apiKey = process.env.SENDGRID_API_KEY?.trim();
+        if (!apiKey) return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE' });
         try {
-            const { email } = req.body;
-            logger.log(`🔑 Password reset request for: ${email}`);
-            const user: any = await pgFindUserByEmail(email);
-            if (!user) {
-                return void res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+            if (!await issuePasswordLink(user, apiKey, passwordMailLanguage(req), 'setup')) {
+                return void res.status(409).json({ code: 'PASSWORD_STATE_CHANGED' });
             }
-            const crypto = await import('crypto');
-            const resetToken = crypto.default.randomBytes(32).toString('hex');
-            const resetTokenHash = crypto.default.createHash('sha256').update(resetToken).digest('hex');
-            const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
-            // Store only the hash in DB — original token goes out via email only
-            user.resetPasswordToken = resetTokenHash;
-            (user as any).resetPasswordExpires = resetTokenExpiry;
-            const resetPatch = { resetPasswordToken: resetTokenHash, resetPasswordExpires: resetTokenExpiry };
-            await pgUpdateUser(String(user._id), resetPatch);
-            const sgMail = (await import('@sendgrid/mail')).default;
-            sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
-            const resetUrl = `https://themegaradio.com/reset-password?token=${resetToken}`;
-            const msg = {
-                to: email,
-                from: 'noreply@themegaradio.com',
-                subject: 'Reset Your Password - Mega Radio',
-                html: `
-          <div style="font-family: 'Ubuntu', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0E0E0E; color: white;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #FF4199; margin: 0;">Mega Radio</h1>
-            </div>
-            <div style="background-color: #1a1a1a; padding: 30px; border-radius: 10px;">
-              <h2 style="color: white; margin-top: 0;">Reset Your Password</h2>
-              <p style="color: #ccc; line-height: 1.6;">Click the button below to reset your password:</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetUrl}" style="background-color: #FF4199; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; display: inline-block;">Reset Password</a>
-              </div>
-              <p style="color: #888; font-size: 14px;">This link expires in 1 hour.</p>
-            </div>
-          </div>
-        `,
-            };
-            await sgMail.send(msg);
-            res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+            res.json({ sent: true });
+        } catch (error) {
+            logPasswordMailFailure(error);
+            res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE' });
         }
-        catch (error) {
-            res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+    });
+    app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+        const user = (req as any).user;
+        const { currentPassword, newPassword } = req.body || {};
+        if (!user.passwordHash) return void res.status(409).json({ code: 'PASSWORD_NOT_SET' });
+        if (!validNewPassword(newPassword)) return void res.status(400).json({ code: 'INVALID_NEW_PASSWORD' });
+        if (typeof currentPassword !== 'string' || !currentPassword || Buffer.byteLength(currentPassword, 'utf8') > 72) {
+            return void res.status(400).json({ code: 'INVALID_CURRENT_PASSWORD' });
         }
+        try {
+            const bcrypt = await import('bcrypt');
+            if (!await bcrypt.default.compare(currentPassword, user.passwordHash)) {
+                return void res.status(403).json({ code: 'INVALID_CURRENT_PASSWORD' });
+            }
+            const passwordHash = await bcrypt.default.hash(newPassword, 12);
+            if (!await passwordStore.pgChangeUserPassword(String(user._id), user.passwordHash, passwordHash)) {
+                return void res.status(409).json({ code: 'PASSWORD_STATE_CHANGED' });
+            }
+            res.json({ message: 'Password changed successfully.' });
+        } catch {
+            res.status(503).json({ code: 'PASSWORD_CHANGE_UNAVAILABLE' });
+        }
+    });
+    // Use a uniform response after lookup to protect account privacy.
+    app.post("/api/auth/forgot-password", async (req, res) => {
+        const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+        if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return void res.status(400).json({ error: 'Valid email is required' });
+        }
+        const apiKey = process.env.SENDGRID_API_KEY?.trim();
+        if (!apiKey) {
+            logger.error('Password reset mail unavailable: SendGrid is not configured');
+            return void res.status(503).json({ code: 'RESET_MAIL_UNAVAILABLE', error: 'Password reset is temporarily unavailable' });
+        }
+        const message = 'If an account exists with this email, you will receive reset instructions.';
+        try {
+            const user = await pgFindUserByEmail(email);
+            if (!user) return void res.json({ message });
+            await issuePasswordLink(user, apiKey, passwordMailLanguage(req), user.passwordHash ? 'reset' : 'setup');
+        } catch (error) {
+            logPasswordMailFailure(error);
+        }
+        res.json({ message });
     });
     // Reset password with token
     app.post("/api/auth/reset-password", async (req, res) => {
         try {
             const { token, newPassword } = req.body;
-            if (typeof token !== 'string' || !token || token.length > 512 || typeof newPassword !== 'string' || newPassword.length < 8 || Buffer.byteLength(newPassword, 'utf8') > 72) {
+            if (typeof token !== 'string' || !token || token.length > 512 || !validNewPassword(newPassword)) {
                 return void res.status(400).json({ error: 'Invalid password' });
             }
-            const crypto = await import('crypto');
-            const tokenHash = crypto.default.createHash('sha256').update(String(token)).digest('hex');
-            const user: any = await pgFindUserByResetToken(tokenHash);
+            const hash = tokenHash(token);
+            const user = await pgFindUserByResetToken(hash);
             if (!user) {
                 return void res.status(400).json({ error: 'Invalid or expired reset token' });
             }
             const bcrypt = await import('bcrypt');
             const passwordHash = await bcrypt.default.hash(newPassword, 12);
-            if (!await pgResetUserPassword(tokenHash, passwordHash)) return void res.status(400).json({ error: 'Invalid or expired reset token' });
+            if (!await pgResetUserPassword(hash, passwordHash)) return void res.status(400).json({ error: 'Invalid or expired reset token' });
             res.json({ message: 'Password has been reset successfully.' });
         }
         catch (error) {

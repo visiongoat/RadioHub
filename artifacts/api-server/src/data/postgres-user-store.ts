@@ -172,10 +172,45 @@ export async function pgListAdminUsers(options: AdminUserListOptions): Promise<{
   };
 }
 
+const passwordResetTokenValid = `u.source->>'resetPasswordToken'=$1
+  AND NULLIF(u.source->>'resetPasswordExpires','')::timestamptz>now()
+  AND u.status='active' AND COALESCE(u.source->>'isActive','true')<>'false'
+  AND (u.source->>'resetPasswordEmail' IS NULL OR u.email=u.source->>'resetPasswordEmail')
+  AND (NULLIF(u.password_hash,'') IS NOT NULL OR u.email_verified)
+  AND (u.source->>'resetPasswordPurpose' IS DISTINCT FROM 'setup' OR NULLIF(u.password_hash,'') IS NULL)`;
+
+const withoutPasswordReset = `COALESCE(source,'{}'::jsonb)
+  -'resetPasswordToken'-'resetPasswordExpires'-'resetPasswordEmail'-'resetPasswordPurpose'`;
+
+export async function pgStorePasswordResetToken(input: {
+  id: string; email: string; tokenHash: string; expires: Date; purpose: 'setup' | 'reset';
+}): Promise<boolean> {
+  const { id, email, tokenHash, expires, purpose } = input;
+  const result = await getPostgresPool().query(
+    `UPDATE users SET source=COALESCE(source,'{}'::jsonb) || jsonb_build_object(
+       'resetPasswordToken',$3::text,'resetPasswordExpires',$4::timestamptz,
+       'resetPasswordEmail',$2::text,'resetPasswordPurpose',$5::text)
+     WHERE id=$1 AND email=$2 AND status='active' AND COALESCE(source->>'isActive','true')<>'false'
+       AND (($5='setup' AND NULLIF(password_hash,'') IS NULL AND email_verified)
+         OR ($5='reset' AND NULLIF(password_hash,'') IS NOT NULL))`,
+    [id, email, tokenHash, expires, purpose],
+  );
+  return result.rowCount === 1;
+}
+
+export async function pgChangeUserPassword(id: string, currentHash: string, passwordHash: string): Promise<boolean> {
+  const result = await getPostgresPool().query(
+    `UPDATE users SET password_hash=$3,
+       source=(${withoutPasswordReset}) || jsonb_build_object('passwordHash',$3::text), updated_at=now()
+     WHERE id=$1 AND password_hash=$2 AND status='active' AND COALESCE(source->>'isActive','true')<>'false'`,
+    [id, currentHash, passwordHash],
+  );
+  return result.rowCount === 1;
+}
+
 export async function pgFindUserByResetToken(tokenHash: string): Promise<any | null> {
   const result = await getPostgresPool().query(
-    `${userSelect} WHERE u.source->>'resetPasswordToken'=$1
-       AND NULLIF(u.source->>'resetPasswordExpires','')::timestamptz>now() LIMIT 1`,
+    `${userSelect} WHERE ${passwordResetTokenValid} LIMIT 1`,
     [tokenHash],
   );
   return shape(result.rows[0]);
@@ -187,11 +222,10 @@ export async function pgResetUserPassword(tokenHash: string, passwordHash: strin
   try {
     await client.query('BEGIN');
     const result = await client.query<{ id: string }>(
-      `UPDATE users SET password_hash=$2,
-         source=(COALESCE(source,'{}'::jsonb)-'resetPasswordToken'-'resetPasswordExpires') || jsonb_build_object('passwordHash',$2::text),
+      `UPDATE users AS u SET password_hash=$2,
+         source=(${withoutPasswordReset}) || jsonb_build_object('passwordHash',$2::text),
          updated_at=now()
-       WHERE source->>'resetPasswordToken'=$1
-         AND NULLIF(source->>'resetPasswordExpires','')::timestamptz>now() RETURNING id`, [tokenHash, passwordHash],
+       WHERE ${passwordResetTokenValid} RETURNING id`, [tokenHash, passwordHash],
     );
     const id = result.rows[0]?.id;
     if (id) {
@@ -298,6 +332,12 @@ export async function pgUpdateUser(id: string, patch: Record<string, any>): Prom
     const next = { ...current, ...changes, preferences: changes.preferences
       ? { ...(current.preferences || {}), ...changes.preferences } : current.preferences };
     const source = { ...(locked.rows[0].source || {}), ...changes, _id: id };
+    if (next.email !== current.email) {
+      delete source.resetPasswordToken;
+      delete source.resetPasswordExpires;
+      delete source.resetPasswordEmail;
+      delete source.resetPasswordPurpose;
+    }
     if (writesHandle) {
       next.username = needsGeneratedHandle(next.username, { email: next.email, createdAt: current.createdAt })
         ? await allocateUserHandle(client, next.fullName, id) : next.username;

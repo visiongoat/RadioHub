@@ -36,7 +36,7 @@ passport.use(new LocalStrategy({
         if (!user) {
             return done(null, false, { message: 'No user found with this email' });
         }
-        const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+        const isValidPassword = !!user.passwordHash && await bcrypt.compare(password, user.passwordHash);
         if (!isValidPassword) {
             return done(null, false, { message: 'Invalid password' });
         }
