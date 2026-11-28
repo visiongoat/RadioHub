@@ -2263,6 +2263,15 @@ export class SeoRenderer {
     });
     if (regionItems) return regionItems;
 
+    const genreSlug = /^\/genres\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(cleanPath)?.[1];
+    if (genreSlug) {
+      const genresPath = buildLocalizedUrl('/genres', language, undefined, urlTranslations);
+      return [
+        { name: getLocalizedText('genres', getLocalizedText('nav_genres', 'Genres')), path: genresPath },
+        { name: genreDisplayName({ slug: genreSlug }, language), path: `${genresPath}/${genreSlug}` },
+      ];
+    }
+
     const items: Array<{ name: string; path: string }> = [
       { name: getLocalizedText('nav_home', 'Home'), path: `/${language}` },
     ];

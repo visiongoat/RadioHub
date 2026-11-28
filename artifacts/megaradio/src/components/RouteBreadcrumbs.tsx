@@ -206,6 +206,7 @@ export function RouteBreadcrumbs({ placement = 'page' }: { placement?: 'page' | 
 
   const { language, cleanPath } = getLanguageFromPath(location);
   const isProfilePage = cleanPath === '/profile' || cleanPath.startsWith('/profile/');
+  const isGenreIndex = cleanPath === '/genres';
   const retiredStation = getRetiredLocaleFromPath(location) && /^\/station\/[^/]+$/.test(cleanPath);
   // The retired URL retains its alias, but the server has already resolved
   // the actual station. Reuse that exact target, including safe ID canonicals.
@@ -236,9 +237,9 @@ export function RouteBreadcrumbs({ placement = 'page' }: { placement?: 'page' | 
   return (
     <nav
       aria-label="breadcrumb"
-      className={`breadcrumb text-xs sm:text-sm ${placement === 'content' ? 'mt-2 mb-5' : `bg-[#101010] py-3 ${isProfilePage ? PROFILE_CONTENT_INSET : 'px-4'}`}`}
+      className={`breadcrumb text-xs sm:text-sm ${placement === 'content' ? 'mt-2 mb-5' : `bg-[#101010] py-3 ${isProfilePage ? PROFILE_CONTENT_INSET : isGenreIndex ? '' : 'px-4'}`}`}
     >
-      <ol className={`${placement === 'content' || isProfilePage ? '' : 'container mx-auto '}flex flex-wrap items-center gap-2 text-gray-400`}>
+      <ol className={`${placement === 'content' || isProfilePage ? '' : 'container mx-auto '}${isGenreIndex ? 'max-sm:!px-5 ' : ''}flex flex-wrap items-center gap-2 text-gray-400`}>
         {items.map((item, idx) => {
           const isLast = idx === items.length - 1;
           return (

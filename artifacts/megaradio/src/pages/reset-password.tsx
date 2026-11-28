@@ -2,18 +2,28 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/hooks/useTranslation";
 
+const MIN_PASSWORD_LENGTH = 8;
+const setupCopy = {
+  en: { heading: 'Create your password', success: 'You can now sign in with your MegaRadio password.' },
+  tr: { heading: 'Şifreni oluştur', success: 'Artık MegaRadio şifrenle giriş yapabilirsin.' },
+  de: { heading: 'Erstelle dein Passwort', success: 'Du kannst dich jetzt mit deinem MegaRadio-Passwort anmelden.' },
+};
+
 export default function ResetPassword() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [, setLocation] = useLocation();
   const [token, setToken] = useState('');
+  const [isSetup, setIsSetup] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const setup = language === 'tr' || language === 'de' ? setupCopy[language] : setupCopy.en;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tokenParam = params.get('token');
+    setIsSetup(params.get('mode') === 'setup');
     if (tokenParam) {
       setToken(tokenParam);
     }
@@ -30,9 +40,9 @@ export default function ResetPassword() {
       return;
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
       setStatus('error');
-      setMessage(t('password_min_length', 'Password must be at least 6 characters'));
+      setMessage(t('auth_password_min_length', 'Password must be at least 8 characters'));
       return;
     }
 
@@ -47,7 +57,7 @@ export default function ResetPassword() {
 
       if (response.ok) {
         setStatus('success');
-        setMessage(data.message || t('password_reset_success', 'Password has been reset successfully!'));
+        setMessage(isSetup ? t('password_setup_success', setup.success) : (data.message || t('password_reset_success', 'Password has been reset successfully!')));
         setTimeout(() => {
           setLocation('/login');
         }, 3000);
@@ -60,13 +70,14 @@ export default function ResetPassword() {
       setMessage(t('something_went_wrong', 'Something went wrong, please try again later'));
     }
   };
+  const heading = isSetup ? setup.heading : t('reset_password', 'Reset Password');
 
   if (!token) {
     return (
       <div className="min-h-screen bg-[#0E0E0E]">
         <div className="bg-[#151515] py-7">
           <div className="container mx-auto px-4">
-            <h1 className="text-2xl font-bold text-white md:text-3xl">{t('reset_password', 'Reset Password')}</h1>
+            <h1 className="text-2xl font-bold text-white md:text-3xl">{heading}</h1>
           </div>
         </div>
         <div className="container mx-auto pb-10 text-white px-4">
@@ -85,16 +96,16 @@ export default function ResetPassword() {
     <div className="min-h-screen bg-[#0E0E0E]">
       <div className="bg-[#151515] py-7">
         <div className="container mx-auto px-4">
-          <h1 className="text-2xl font-bold text-white md:text-3xl">{t('reset_password', 'Reset Password')}</h1>
+          <h1 className="text-2xl font-bold text-white md:text-3xl">{heading}</h1>
         </div>
       </div>
 
       <div className="container mx-auto pb-10 text-white px-4">
         <div className="mx-auto w-full max-w-[345px]">
-          <div className="py-8 text-center text-xl font-bold sm:text-2xl">
+          {!isSetup && <div className="py-8 text-center text-xl font-bold sm:text-2xl">
             {t('create_new_password', 'Create a new password')}
-          </div>
-          <p className="text-center text-gray-400 mb-8">
+          </div>}
+          <p className={`text-center text-gray-400 mb-8 ${isSetup ? 'pt-8' : ''}`}>
             {t('enter_new_password', 'Enter your new password below.')}
           </p>
 
@@ -112,12 +123,13 @@ export default function ResetPassword() {
                 </svg>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   placeholder={t('new_password', 'New Password')}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-[#1D1D1D] border border-[#2F2F2F] rounded-lg px-4 py-4 pl-12 text-white placeholder-gray-400 focus:border-[#FF4199] focus:outline-none"
                   required
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   data-testid="input-new-password"
                 />
               </div>
@@ -128,12 +140,13 @@ export default function ResetPassword() {
                 </svg>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   placeholder={t('confirm_password', 'Confirm Password')}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full bg-[#1D1D1D] border border-[#2F2F2F] rounded-lg px-4 py-4 pl-12 text-white placeholder-gray-400 focus:border-[#FF4199] focus:outline-none"
                   required
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   data-testid="input-confirm-password"
                 />
               </div>
@@ -141,10 +154,10 @@ export default function ResetPassword() {
               <button
                 className="mb-6 flex justify-center items-center overflow-hidden py-3 w-full cursor-pointer border-0 bg-[#FF4199] rounded text-xl font-medium text-white focus:outline-none focus:ring-0 disabled:opacity-50"
                 type="submit"
-                disabled={status === 'loading'}
+                disabled={status === 'loading' || status === 'success'}
                 data-testid="button-reset-password"
               >
-                {status === 'loading' ? t('resetting', 'Resetting...') : t('reset_password', 'Reset Password')}
+                {status === 'loading' ? (isSetup ? t('saving', 'Saving…') : t('resetting', 'Resetting...')) : heading}
               </button>
 
               <Link

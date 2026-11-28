@@ -1,9 +1,10 @@
-import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import type { CSSProperties, ReactNode } from 'react';
+import { genreDisplayName } from '@workspace/seo-shared/genre-localization';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams, useRoute } from 'wouter';
+import { useParams, useRoute } from 'wouter';
 import { SeoHead } from '@/components/SeoHead';
 import StationCard from '@/components/ui/station-card';
+import { GenrePageTitle } from '@/components/layout/genre-page-title';
 import { CODE_TO_COUNTRY, SEO_LANGUAGES, GENRE_STATIONS_PAGE_SIZE, MAX_GENRE_DIRECTORY_PAGE } from '@workspace/seo-shared/seo-config';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSeoRouting } from '@/hooks/useSeoRouting';
@@ -128,54 +129,38 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   // already has a synchronous slug-derived fallback, so the header/H1 render
   // immediately; only the station grid shows its own skeleton while it loads.
   void genreLoading;
-  const genreName = genreDisplayName({ slug, name: genre?.name || (slug ? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '') }, language);
+  const genreName = genreDisplayName({ slug, name: genre?.name }, language);
+  const gridClass = 'grid grid-cols-1 gap-x-[21px] gap-y-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-y-5';
 
   return (
     <>
       <SeoHead pageType="genres" genreName={genreName} />
       
-      <div className="min-h-screen bg-[#0D0D0D]">
-        {/* Header with Breadcrumb - Figma: 1512x100, #151515 */}
-        <div className="w-full bg-[#151515]" style={{ height: '100px' }}>
-          <div className="mx-auto w-full max-w-[1512px] h-full px-5 md:px-[20px] flex items-center">
-            <div className="mx-auto max-w-[1206px] w-full flex items-center text-white text-3xl font-bold">
-              <Link href={getLocalizedUrl('/genres')} className="text-[#777777] cursor-pointer hover:text-white transition-colors">
-                {labels.genres}
-              </Link>
-              <span className="mx-3 text-[#777777]">&gt;</span>
-              {/* Promoted from <span> to <h1> so the live genre page carries a
-                  single heading on client navigation (the SSR genre page emits
-                  one via getH1Text; the SPA was replacing it with a <span>).
-                  Tailwind preflight resets h1 font-size/weight/margin to inherit,
-                  so this is visually identical to the previous span. */}
-              <h1 className="capitalize">{genreName} {labels.stations}</h1>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-[#0e0e0e]">
+        <GenrePageTitle title={genreName || labels.genres}
+          parent={{ label: labels.genres, href: getLocalizedUrl('/genres') }}
+          currentHref={slug ? getLocalizedUrl(`/genres/${slug}`) : undefined} />
 
-        {/* Main Content */}
-        <div className="mx-auto w-full max-w-[1512px] px-5 md:px-[20px] pb-16">
-          <div className="mx-auto max-w-[1206px] w-full pt-6">
-            {/* Stations Grid */}
-            <div className="mb-12">
+        <div className="container pb-12 pt-5 max-sm:!px-5 md:pb-20">
 
             {genreError || stationsError || !slug || !validPage ? (
               <p role="alert" className="py-5 text-white/70">{labels.error} <button disabled={genreFetching || stationsFetching || !slug || !validPage} onClick={() => { void retryGenre(); void retryStations(); }} className="underline">{labels.retry}</button></p>
             ) : stationsLoading ? (
-              <div role="status" aria-label={labels.loading} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div role="status" aria-label={labels.loading} className={gridClass}>
                 {Array.from({ length: 9 }).map((_, i) => (
-                  <div key={i} className="bg-[#1A1A1A] animate-pulse rounded-lg h-48" />
+                  <div key={i} className="h-[102px] animate-pulse rounded-[10px] bg-[#2f2f2f] lg:h-[130px]" />
                 ))}
               </div>
             ) : (
               <>
                 {stations.length === 0 && <p role="status" className="py-5 text-white/70">{labels.emptyStations}</p>}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className={gridClass}>
                   {stations.map((station: any) => (
                     <StationCard
                       key={station._id}
                       station={station}
-                      showVotes={true}
+                      variant="genre"
+                      headingLevel={2}
                     />
                   ))}
                 </div>
@@ -284,8 +269,6 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
                 </div>
               </>
             )}
-            </div>
-          </div>
         </div>
       </div>
     </>

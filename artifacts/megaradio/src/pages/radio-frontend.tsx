@@ -29,6 +29,7 @@ import { MapPin, ChevronLeft, ChevronRight, ThumbsUp, Heart } from "lucide-react
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { normalizePublicStationLogoUrl } from '@workspace/seo-shared/station-logo-url';
 import './home-search.css';
+import './home-discover.css';
 
 import { formatSearchVoteCount as formatVoteCount } from '@/lib/search-presentation';
 
@@ -56,15 +57,6 @@ const rankSearchResults = (stations: any[], query: string): any[] => {
   return [...exactMatches, ...startsWithMatches, ...containsMatches];
 };
 
-const GENRE_IMAGES = [
-  '/images/genre-bg-grad-1.webp',
-  '/images/genre-bg-grad-2.webp',
-  '/images/genre-bg-grad-2.webp',
-  '/images/genre-bg-grad-4.webp',
-];
-const getRandomImage = (index: number): string => {
-  return `url(${GENRE_IMAGES[Math.abs(index) % GENRE_IMAGES.length]})`;
-};
 import DiscoverableGenreSlider from "@/components/DiscoverableGenreSlider";
 import PopularStationsSection from "@/components/PopularStationsSection";
 import { InView } from "@/components/ui/in-view";
@@ -206,7 +198,7 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
         {/* 3x3 Grid skeleton - optimized height for mobile */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-[21px] gap-y-3 md:gap-y-[20px]">
           {Array(6).fill(0).map((_, i) => (
-            <div key={i} className="animate-pulse bg-gray-600 rounded-lg p-3 md:p-4 h-20 md:h-24">
+            <div key={i} className="animate-pulse bg-[#2f2f2f] rounded-[10px] p-3 md:p-4 h-20 lg:h-[130px]">
               <div className="flex items-center gap-3 h-full">
                 <div className="h-12 w-12 md:h-14 md:w-14 bg-gray-500 rounded-full flex-shrink-0"></div>
                 <div className="flex-1 flex flex-col gap-2">
@@ -244,11 +236,11 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
           <Link 
             key={`public-user-${user._id}`}
             href={getLocalizedUrl(`/users/${user.slug || user._id}`)}
-            className="flex items-center rounded-md bg-[#2F2F2F] px-3 py-3 md:px-4 md:py-4 hover:bg-[#3A3A3A] transition-colors"
+            className="flex min-h-20 items-center rounded-[10px] bg-[#2F2F2F] px-3 py-3 transition-colors hover:bg-[#3A3A3A] md:px-4 lg:min-h-[130px] lg:px-[23px]"
           >
             <PublicProfileAvatar profile={user} name={communityDisplayName(user, t('user_anonymous', 'Anonymous'))}
-              className="h-12 w-12 md:h-14 md:w-14 rounded-full shadow-inner flex-shrink-0" />
-            <div className="pl-3 md:pl-4 flex-1 min-w-0">
+              className="size-12 shrink-0 rounded-full shadow-inner md:size-14 lg:size-16" />
+            <div className="min-w-0 flex-1 ps-3 md:ps-4 lg:ps-[22px]">
               <h3 className="text-base md:text-lg font-medium text-white truncate">{communityDisplayName(user, t('user_anonymous', 'Anonymous'))}</h3>
               <p className="text-xs md:text-sm font-medium text-gray-400 truncate">{communityFavoriteCount(user).toLocaleString(language)} {labels.radios}</p>
             </div>
@@ -924,7 +916,6 @@ export default function RadioFrontend({
       <SeoHead pageType="home" />
       
       
-      {/* EXACT HERO SECTION FROM ORIGINAL - Hero.vue */}
       <div className="hero-container overflow-visible">
           {/* 🚀 LCP CRITICAL: Hero background image - visible in HTML with high priority for fastest LCP */}
           <HomeHeroPicture />
@@ -1109,18 +1100,15 @@ export default function RadioFrontend({
             </div>
           </div>
 
-          {/* Gradient overlay - EXACT from original */}
-          <div className="absolute bottom-0 h-60 w-full bg-gradient-to-b from-transparent to-[#1A0020]"></div>
         </div>
 
-        {/* MAIN CONTENT SECTION - EXACT from index.vue */}
-        <div className="relative overflow-hidden bg-[#0E0E0E]">
+        <div className="home-discover relative overflow-hidden bg-[#0E0E0E]">
           
-          <div className="m-auto text-white space-y-8">
+          <div className="m-auto space-y-7 text-white md:space-y-[60px]">
 
             {/* 1. GENRES SECTION - EXACT from index.vue */}
-            <div className="container">
-              <div className="flex justify-between items-center pb-4">
+            <div className="container home-genres">
+              <div className="flex items-center justify-between pb-3 md:pb-[23px]">
                 <h2 className="section-header">{t('homepage_genres', 'Genres')}</h2>
                 {/* Hide "See all" and navigation arrows on mobile, show only on md+ */}
                 <div className="hidden md:flex items-center gap-3">
@@ -1146,12 +1134,11 @@ export default function RadioFrontend({
                 </div>
               </div>
 
-              {/* Standard Genre Slider - Mobile: 170x58px, Desktop: 280x87px */}
-              <div className="min-h-[58px] md:min-h-[87px]">
+              <div className="home-genres__rail min-h-[45px] md:min-h-[87px]">
                 {genresLoading ? (
-                  <div className="flex gap-2 md:gap-5 items-center overflow-hidden h-[58px] md:h-[87px]">
-                    {Array(3).fill(0).map((_, index) => (
-                      <div key={index} className="animate-pulse h-[58px] md:h-[87px] w-[170px] md:w-[280px] rounded-[5px] md:rounded-[10px] bg-[#404040] flex-shrink-0"></div>
+                  <div className="flex items-center gap-[10px] overflow-hidden md:gap-5">
+                    {Array(5).fill(0).map((_, index) => (
+                      <div key={index} className="home-genre-tile shrink-0 animate-pulse bg-[#2f2f2f]" />
                     ))}
                   </div>
                 ) : (
@@ -1167,11 +1154,11 @@ export default function RadioFrontend({
                     breakpoints={{
                       320: {
                         slidesPerView: 'auto' as any,
-                        spaceBetween: 8,
+                        spaceBetween: 10,
                       },
                       480: {
                         slidesPerView: 'auto' as any,
-                        spaceBetween: 8,
+                        spaceBetween: 10,
                       },
                       768: {
                         slidesPerView: 'auto' as any,
@@ -1184,20 +1171,17 @@ export default function RadioFrontend({
                     }}
                     className="flex gap-2"
                   >
-                    {/* Genres slider - Mobile: 130x45px, Desktop: 280x87px */}
                     {genres?.map((genre: any, index: number) => (
                       <SwiperSlide
                         key={`genre-${genre._id}-${index}`}
-                        className="genre-slide cursor-pointer select-none genre-bg-full dynamic-bg-image rounded-[5px] md:rounded-[10px] !w-[170px] !h-[58px] md:!w-[280px] md:!h-[87px]"
-                        style={{
-                          '--bg-image': getRandomImage(index),
-                        } as React.CSSProperties}
+                        className="home-genre-tile select-none"
+                        data-genre-theme={index % 4}
                       >
                         <Link 
                           href={getLocalizedUrl(`/genres/${genre.slug || genre.name.toLowerCase()}`)} 
-                          className="w-full h-full flex items-center justify-center rounded-[5px] md:rounded-[10px]"
+                          className="flex size-full items-center justify-center rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
                         >
-                          <h3 className="home-genre-title px-2 text-sm md:text-xl font-bold capitalize text-center text-white drop-shadow-lg">
+                          <h3 className="home-genre-title px-2 text-center text-sm font-bold capitalize leading-tight text-white md:text-[32px]">
                             {genreDisplayName(genre, language)}
                           </h3>
                         </Link>
@@ -1216,11 +1200,11 @@ export default function RadioFrontend({
 
             {/* 3. STATIONS NEAR YOU SECTION */}
             {shouldShowNearbyStations && (nearbyStationsData as any)?.stations?.length > 0 && (
-              <div className="container mt-8">
-                <h2 className="section-header pb-4">
+              <div className="container">
+                <h2 className="section-header pb-5 md:pb-[30px]">
                   {t('homepage_stations_near_you', 'Stations Near You')}
                 </h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
+                <div className="home-station-grid">
                   {(nearbyStationsData as any).stations.slice(0, 6).map((station: any, i: number) => (
                     <StationCard key={`nearby-${station._id || i}`} station={station} onPlay={handlePlay} headingLevel={3} />
                   ))}
@@ -1230,8 +1214,8 @@ export default function RadioFrontend({
 
             {/* 4. YOUR FAVORITES SECTION - Only show when user is authenticated and has favorites */}
             {isAuthenticated && userFavoriteStations?.length > 0 && (
-              <div className="container mt-8">
-                <div className="flex justify-between pb-4">
+              <div className="container">
+                <div className="flex justify-between pb-5 md:pb-[30px]">
                   <h2 className="section-header flex items-center space-x-2">
                     <svg className="w-6 h-6 text-[#FF4199]" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
@@ -1242,7 +1226,7 @@ export default function RadioFrontend({
                     {t('homepage_see_all', 'See all')}
                   </Link>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
+                <div className="home-station-grid">
                   {userFavoriteStations.slice(0, 6).map((station: any, i: number) => (
                     <StationCard 
                       key={`favorite-${station._id || i}`} 
@@ -1256,33 +1240,11 @@ export default function RadioFrontend({
               </div>
             )}
 
-            {/* Blue Gradient Backgrounds - Decorative Elements */}
-            <div className="fixed pointer-events-none" style={{
-              width: '946px',
-              height: '946px',
-              top: '2121px',
-              left: '-690px',
-              background: 'rgba(51, 0, 255, 0.3)',
-              borderRadius: '50%',
-              filter: 'blur(40px)',
-              zIndex: 0
-            }} aria-hidden="true" />
-            <div className="fixed pointer-events-none" style={{
-              width: '946px',
-              height: '946px',
-              top: '2121px',
-              right: '-690px',
-              background: 'rgba(51, 0, 255, 0.3)',
-              borderRadius: '50%',
-              filter: 'blur(40px)',
-              zIndex: 0
-            }} aria-hidden="true" />
-
             {/* 4. DISCOVERABLE GENRE SLIDER SECTION - LAZY LOADED FOR TBT OPTIMIZATION */}
             <InView rootMargin="200px">
               {(inView) => inView ? (
                 <div className="container">
-                  <div className="my-8">
+                  <div>
                     <h2 className="section-header pb-4">{t('homepage_discover_genres', 'Discover Genres')}</h2>
                     {discoverableGenresLoading ? (
                       <div className="flex gap-4 items-center overflow-hidden">
@@ -1309,7 +1271,7 @@ export default function RadioFrontend({
                 </div>
               ) : (
                 <div className="container">
-                  <div className="my-8">
+                  <div>
                     <h2 className="section-header pb-4">{t('homepage_discover_genres', 'Discover Genres')}</h2>
                     <div className="flex gap-4 items-center overflow-hidden">
                       {Array(6).fill(0).map((_, index) => (
@@ -1326,7 +1288,7 @@ export default function RadioFrontend({
               {(inView) => inView ? (
                 <Suspense fallback={
                   <div className="container">
-                    <div className="my-8">
+                    <div>
                       <h2 className="section-header pb-4">{t('homepage_community_favorites', 'Community Favorites')}</h2>
                       <div className="flex gap-4 overflow-hidden">
                         {Array(4).fill(0).map((_, i) => (
@@ -1340,7 +1302,7 @@ export default function RadioFrontend({
                 </Suspense>
               ) : (
                 <div className="container">
-                  <div className="my-8">
+                  <div>
                     <h2 className="section-header pb-4">{t('homepage_community_favorites', 'Community Favorites')}</h2>
                     <div className="flex gap-4 overflow-hidden">
                       {Array(4).fill(0).map((_, i) => (
@@ -1354,7 +1316,7 @@ export default function RadioFrontend({
 
             {/* 6. ALL STATIONS SECTION - EXACT from AllStations.vue */}
             <div className="container relative">
-              <h2 className="section-header pb-4 flex items-baseline gap-2">
+              <h2 className="section-header flex flex-wrap items-baseline gap-x-2 pb-5 md:pb-[30px]">
                 <span>{t('homepage_all_stations', 'All Stations')}</span>
                 {activeCountry !== 'all' && (
                   <span className="text-sm font-normal text-gray-400">
@@ -1364,7 +1326,7 @@ export default function RadioFrontend({
               </h2>
 
               {/* All Stations Grid - Always use 3-column grid layout for consistent design */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
+              <div className="home-station-grid">
                 <CatalogStationItems stations={availableLoadedStations} getKey={(station: any, i) => `all-stations-${station._id || i}`}>
                   {(station: any) => <StationCard station={station} onPlay={handlePlay} headingLevel={3} />}
                 </CatalogStationItems>

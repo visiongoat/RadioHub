@@ -2,6 +2,7 @@ import { genreDisplayName, genreSearchQuery } from '@workspace/seo-shared/genre-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { GenrePageTitle } from "@/components/layout/genre-page-title";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useGenreMobileViewport, useGenrePagination } from '@/hooks/useGenrePageState';
@@ -14,7 +15,6 @@ import 'swiper/css/free-mode';
 // Import icons
 import arrowLeftIcon from "@assets/arrow-left.png";
 import arrowRightIcon from "@assets/arrow-right.png";
-import searchIcon from "@assets/search-normal.png";
 
 interface Genre {
   _id: string;
@@ -67,7 +67,7 @@ export default function GenresPage({
         countryName: countryParam,
         page: currentPage.toString(),
         limit: String(limit),
-        search: canonicalSearch || ''
+        search: canonicalSearch
       });
       
       const response = await fetch(`/api/genres/precomputed?${params}`, { signal });
@@ -100,166 +100,64 @@ export default function GenresPage({
   const totalGenres = genresResponse?.count || 0;
   const totalPages = genresResponse?.totalPages || 1;
 
+  const searchLabel = t('search_genre', 'Search genre');
+
   return (
     <div>
-      {/* Header - Mobile: no background, compact spacing. Desktop: with background */}
-      <div className="md:bg-[#151515] py-4 md:py-7 text-3xl font-bold">
-        <div className="mx-auto w-full max-w-[1512px] px-5 md:px-[20px]">
-          {/* Re-audit 2026-06-20 Item 6: was a plain <div>, leaving this page
-              with no <h1> on client navigation (the SSR genres index emits one
-              via getH1Text). Promote the existing localized title to the page
-              <h1>; classes/layout preserved so there's no visual change. */}
-          <h1 className="mx-auto max-w-[1206px] w-full flex items-center text-white">
-            {labels.genres}
-          </h1>
-        </div>
-      </div>
+      <GenrePageTitle title={labels.genres} />
+      <div className="container pb-10 pt-4 text-white max-sm:!px-5 md:pt-5">
+        <div className="mb-2.5 grid gap-4 overflow-hidden rounded-[8px] bg-[#2f2f2f] pb-3 ps-[11px] pt-3 md:mb-5 md:min-h-[91px] md:grid-cols-[minmax(0,453px)_minmax(0,1fr)] md:items-center md:gap-[35px] md:py-5 md:ps-[18px]">
+          <label className="me-[11px] flex h-[34px] min-w-0 items-center gap-2.5 rounded-[5px] bg-[#454545] px-2.5 focus-within:ring-2 focus-within:ring-[#ff4199] md:me-0 md:h-[45px] md:gap-4 md:px-6">
+            <img src="/icons/search-normal.svg" width="20" height="20" alt="" className="size-4 shrink-0 opacity-70 md:size-6" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={event => setSearchQuery(event.target.value)}
+              aria-label={searchLabel}
+              placeholder={searchLabel}
+              className="h-full w-full min-w-0 border-0 bg-transparent p-0 text-xs text-white outline-none placeholder:text-white/70 focus:ring-0 md:text-xl"
+            />
+          </label>
 
-      <div className="mx-auto w-full max-w-[1512px] px-5 md:px-[20px] pb-10 text-white">
-        <div className="mx-auto max-w-[1206px] w-full pt-3 md:pt-[20px]">
-          {/* Search and Popular Section */}
-          <div className="relative mb-[20px] grid-cols-1 md:grid-cols-2 rounded-lg bg-[#2F2F2F] p-5 md:grid md:pr-0 items-start md:items-center gap-4">
-            {/* Search input - Figma: 453x45, radius 5px, #454545 */}
-            <div>
-              <div 
-                className="flex items-center rounded-[5px] bg-[#454545] px-4 w-full md:w-[453px] h-[45px]"
-              >
-                <img src={searchIcon} alt="Search" className="w-5 h-5 flex-shrink-0 opacity-70" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('search_genre')}
-                  className="ml-2 w-full border-0 bg-transparent focus:outline-none focus:ring-0 placeholder:text-[#FFFFFFB2]"
-                  style={{ 
-                    fontFamily: "'Ubuntu', sans-serif", 
-                    fontWeight: 400, 
-                    fontSize: '20px', 
-                    lineHeight: '100%',
-                    color: '#FFFFFFB2'
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Popular genres slider with Swiper - Right aligned on desktop */}
-            <div className="relative w-full pt-4 md:pt-0">
-              {/* Mobile: Popular text above genres, left aligned */}
-              <div 
-                className="block md:hidden mb-3"
-                style={{
-                  fontFamily: "'Ubuntu', sans-serif",
-                  fontWeight: 500,
-                  fontSize: '14px',
-                  lineHeight: '100%',
-                  color: '#FF4FA0'
-                }}
-              >
-                {t('popular')}
-              </div>
-              
-              {/* Desktop: Popular text inline with genres, right aligned */}
-              <div className="flex w-full items-center md:justify-end">
-                <div 
-                  className="hidden md:block mr-4 flex-shrink-0"
-                  style={{
-                    fontFamily: "'Ubuntu', sans-serif",
-                    fontWeight: 400,
-                    fontSize: '20px',
-                    lineHeight: '100%',
-                    color: '#FF4FA0'
-                  }}
+          <div className="flex min-w-0 flex-col gap-2.5 md:flex-row md:items-center md:gap-6">
+            <span className="shrink-0 text-sm font-medium text-[#ff4fa0] md:text-xl md:font-normal">{t('popular', 'Popular')}</span>
+            <div className="min-w-0 flex-1">
+              {popularGenres.length > 0 ? (
+                <Swiper
+                  modules={[FreeMode]}
+                  spaceBetween={10}
+                  slidesPerView="auto"
+                  freeMode
+                  grabCursor
+                  watchOverflow
+                  breakpoints={{ 768: { spaceBetween: 20 } }}
+                  className="popular-genres-swiper w-full"
                 >
-                  {t('popular')}
-                </div>
-                <div className="flex-1 md:flex-initial overflow-hidden">
-                {popularGenres && popularGenres.length > 2 ? (
-                  <Swiper
-                    modules={[FreeMode]}
-                    spaceBetween={8}
-                    slidesPerView="auto"
-                    freeMode={{
-                      enabled: true,
-                      sticky: false,
-                    }}
-                    grabCursor={true}
-                    watchOverflow={true}
-                    className="popular-genres-swiper w-full"
-                    breakpoints={{
-                      320: { 
-                        slidesPerView: "auto",
-                        spaceBetween: 6,
-                      },
-                      480: { 
-                        slidesPerView: "auto",
-                        spaceBetween: 8,
-                      },
-                      768: { 
-                        slidesPerView: "auto",
-                        spaceBetween: 10,
-                      },
-                      1024: { 
-                        slidesPerView: "auto",
-                        spaceBetween: 12,
-                      },
-                    }}
-                  >
-                    {popularGenres.map((genre: Genre, index: number) => (
-                      <SwiperSlide key={`popular-${genre._id || index}`} className="!w-auto !flex-shrink-0">
-                        <Link
-                          href={getLocalizedUrl(`/genres/${genre.slug}`)}
-                          className="cursor-pointer whitespace-nowrap rounded-[5px] bg-[#454545] text-center capitalize inline-flex items-center justify-center hover:bg-[#505050] transition-colors"
-                          style={{
-                            width: '147px',
-                            height: '45px',
-                            fontFamily: "'Ubuntu', sans-serif",
-                            fontWeight: 400,
-                            fontSize: '20px',
-                            lineHeight: '100%',
-                            color: '#FFFFFFB2'
-                          }}
-                        >
-                          {genreDisplayName(genre, language)}
-                        </Link>
-                      </SwiperSlide>
-                    ))}
-                  </Swiper>
-                ) : popularGenres && popularGenres.length > 0 ? (
-                  // Fallback for few genres - no swiper needed
-                  <div className="flex gap-2 flex-wrap md:justify-end">
-                    {popularGenres.map((genre: Genre, index: number) => (
+                  {popularGenres.map((genre: Genre, index: number) => (
+                    <SwiperSlide key={genre._id || index} className="!w-auto">
                       <Link
-                        key={`popular-${genre._id || index}`}
                         href={getLocalizedUrl(`/genres/${genre.slug}`)}
-                        className="cursor-pointer whitespace-nowrap rounded-[5px] bg-[#454545] text-center capitalize inline-flex items-center justify-center hover:bg-[#505050] transition-colors"
-                        style={{
-                          width: '147px',
-                          height: '45px',
-                          fontFamily: "'Ubuntu', sans-serif",
-                          fontWeight: 400,
-                          fontSize: '20px',
-                          lineHeight: '100%',
-                          color: '#FFFFFFB2'
-                        }}
+                        className="inline-flex min-h-8 min-w-[83px] items-center justify-center whitespace-nowrap rounded-[5px] bg-[#454545] px-3 text-xs text-white/80 transition-colors hover:bg-[#505050] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white md:min-h-[45px] md:min-w-[147px] md:text-xl"
                       >
                         {genreDisplayName(genre, language)}
                       </Link>
-                    ))}
-                  </div>
-                ) : popularLoading ? (
-                  <div className="flex gap-2 overflow-x-auto md:justify-end">
-                    {Array(4).fill(0).map((_, index) => (
-                      <div key={index} className="animate-pulse bg-[#454545] rounded-[5px]" style={{ width: '147px', height: '45px' }}></div>
-                    ))}
-                  </div>
-                ) : popularError ? (
-                  <p role="alert" className="text-sm text-white/70">{labels.error} <button disabled={popularFetching} onClick={() => void retryPopular()} className="underline">{labels.retry}</button></p>
-                ) : (
-                  <p role="status" className="text-sm text-white/70">{labels.emptyGenres}</p>
-                )}
+                    </SwiperSlide>
+                  ))}
+                </Swiper>
+              ) : popularLoading ? (
+                <div className="flex gap-2.5 overflow-hidden md:gap-5">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <div key={index} className="h-8 w-[83px] shrink-0 animate-pulse rounded-[5px] bg-[#454545] md:h-[45px] md:w-[147px]" />
+                  ))}
                 </div>
-              </div>
+              ) : popularError ? (
+                <p role="alert" className="text-sm text-white/70">{labels.error} <button disabled={popularFetching} onClick={() => void retryPopular()} className="underline">{labels.retry}</button></p>
+              ) : (
+                <p role="status" className="text-sm text-white/70">{labels.emptyGenres}</p>
+              )}
             </div>
           </div>
+        </div>
 
           {/* Genres Grid - exact layout from original */}
           {genresError ? (
@@ -269,18 +167,18 @@ export default function GenresPage({
           ) : genres.length === 0 ? (
             <p role="status" className="py-5 text-white/70">{labels.emptyGenres}</p>
           ) : null}
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-x-[21px] gap-y-2.5 md:grid-cols-2 lg:grid-cols-3 lg:gap-y-5">
             {genres.map((genre: Genre, i: number) => (
               <Link
                 key={genre._id || i}
                 href={getLocalizedUrl(`/genres/${genre.slug}`)}
-                className="flex flex-col justify-center rounded-lg bg-[#2F2F2F] p-5 hover:bg-[#3F3F3F] transition-colors"
+                className="flex min-h-[78px] flex-col justify-center gap-1 rounded-[10px] bg-[#2f2f2f] px-3.5 py-3 text-white transition-colors hover:bg-[#3f3f3f] md:px-5 lg:min-h-[130px]"
               >
-                <h2 className="text-[24px] font-medium capitalize">
+                <h2 className="text-base font-medium leading-tight md:text-[24px]">
                   {genreDisplayName(genre, language)}
                 </h2>
-                <p className="text-[15px] font-light">
-                  {(genre.total_stations || genre.stationCount || 0).toLocaleString()} {labels.stations}
+                <p className="text-sm font-normal text-white/75 md:text-[15px]">
+                  {(genre.total_stations ?? genre.stationCount ?? 0).toLocaleString(language)} {labels.stations}
                 </p>
               </Link>
             ))}
@@ -462,7 +360,6 @@ export default function GenresPage({
             </div>
           )}
           </div>
-        </div>
       </div>
     </div>
   );

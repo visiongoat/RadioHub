@@ -119,7 +119,7 @@ it.each([false, true])('hub metadata stays honest across pagination, country and
   await screen.findByRole('heading', { name: 'Genre Turkey 2 0' });
   view.rerender(tree('Austria'));
   await screen.findByRole('heading', { name: 'Genre Austria 1 0' });
-  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'jazz' } });
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'jazz' } });
   await screen.findByRole('heading', { name: 'Genre Austria 1 jazz0' });
   expectNoServerLists();
 });

@@ -77,7 +77,8 @@ interface StationCardProps {
   onToggleFavorite?: (stationId: string, isFavorite: boolean) => void;
   onFavorite?: (stationId: string, isFavorite: boolean) => void;
   showVotes?: boolean; // Control whether to show votes
-  headingLevel?: 3 | 4;
+  headingLevel?: 2 | 3 | 4;
+  variant?: 'genre';
   showEngagement?: boolean;
   engagement?: StationEngagement;
 }
@@ -90,9 +91,12 @@ const StationCard = memo(function StationCard({
   onStop,
   onToggleFavorite,
   showVotes = false,
-  headingLevel = 4
+  headingLevel = 4,
+  variant,
 }: StationCardProps) {
-  const Heading = headingLevel === 3 ? 'h3' : 'h4';
+  const Heading = `h${headingLevel}` as const;
+  const inGenre = variant === 'genre';
+  const playButtonSize = inGenre ? 'size-11 border-2 border-transparent bg-clip-padding lg:size-10 lg:border-0' : 'w-12 h-12';
   const [isFavorite, setIsFavorite] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -193,7 +197,7 @@ const StationCard = memo(function StationCard({
 
   return (
     <div 
-      className="group flex items-center rounded-[10px] bg-[#2F2F2F] overflow-hidden w-full md:w-full h-[102px] lg:h-[130px] p-3 lg:p-[20px] transition-colors duration-300 ease-out hover:bg-[#383838] cursor-pointer"
+      className={`group flex items-center rounded-[10px] bg-[#2F2F2F] overflow-hidden w-full md:w-full h-[102px] lg:h-[130px] lg:p-[20px] transition-colors duration-300 ease-out hover:bg-[#383838] cursor-pointer ${inGenre ? 'px-[13px]' : 'p-3'}`}
       style={{ maxWidth: '100%' }}
     >
       <Link
@@ -203,12 +207,12 @@ const StationCard = memo(function StationCard({
           handleNavigateAndPlay();
         }}
         aria-label={getStationListenLabel(station.name, t, language)}
-        className="flex-shrink-0 cursor-pointer relative bg-[#1a1a1a] rounded-[9px] overflow-hidden w-[70px] h-[70px] md:w-[90px] md:h-[90px] block"
+        className={`flex-shrink-0 cursor-pointer relative bg-[#1a1a1a] rounded-[9px] overflow-hidden block ${inGenre ? 'size-[73px] lg:size-[90px]' : 'w-[70px] h-[70px] md:w-[90px] md:h-[90px]'}`}
       >
         <StationLogo
           station={station}
           size="card"
-          sizes="(min-width: 768px) 90px, 70px"
+          sizes={inGenre ? '(min-width: 1024px) 90px, 73px' : '(min-width: 768px) 90px, 70px'}
           alt={getStationImageAlt(station, language, t)}
           className="absolute inset-0 rounded-[9px]"
         />
@@ -221,7 +225,7 @@ const StationCard = memo(function StationCard({
           e.preventDefault();
           handleNavigateAndPlay();
         }}
-        className="ml-3 md:ml-[20px] truncate flex-1 cursor-pointer pr-2 flex flex-col justify-center gap-[4px] text-inherit no-underline"
+        className={`${inGenre ? 'ms-[18px] lg:ms-5' : 'ml-3 md:ml-[20px]'} min-w-0 truncate flex-1 cursor-pointer pr-2 flex flex-col justify-center gap-[4px] text-inherit no-underline`}
       >
         <Heading className="text-base md:text-[20px] font-medium text-white truncate leading-[20px] md:leading-[23px]">
           {station.name}
@@ -243,7 +247,7 @@ const StationCard = memo(function StationCard({
           
           return (
             <p 
-              className="text-sm md:text-[15px] font-medium text-white leading-[16px] md:leading-[17px]"
+              className={`text-sm md:text-[15px] font-medium text-white leading-[16px] md:leading-[17px] ${inGenre ? 'truncate' : ''}`}
               title={fullLocationOriginal}
             >
               {isTruncated ? (
@@ -317,7 +321,7 @@ const StationCard = memo(function StationCard({
               e.stopPropagation();
               handlePlay();
             }}
-            className="flex items-center justify-center w-12 h-12 rounded-full bg-[#656565] hover:bg-[#FF4199] transition-colors duration-300 group-hover:bg-[#FF4199]"
+            className={`flex items-center justify-center ${playButtonSize} rounded-full bg-[#656565] hover:bg-[#FF4199] transition-colors duration-300 group-hover:bg-[#FF4199]`}
           >
             <span className="sr-only">{t('player_play_station', t('btn_play', 'Play Radio'))}</span>
             <svg className="h-[26px] w-[26px] text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -330,7 +334,7 @@ const StationCard = memo(function StationCard({
               e.stopPropagation();
               handleStop();
             }}
-            className="flex items-center justify-center w-12 h-12 rounded-full bg-[#FF4199] hover:bg-[#E63A87] transition-colors duration-300"
+            className={`flex items-center justify-center ${playButtonSize} rounded-full bg-[#FF4199] hover:bg-[#E63A87] transition-colors duration-300`}
           >
             <span className="sr-only">{t('player_stop', t('btn_stop', 'Stop Radio'))}</span>
             <svg className="h-[26px] w-[26px] text-white" fill="currentColor" viewBox="0 0 24 24">

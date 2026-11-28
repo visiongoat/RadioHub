@@ -61,7 +61,7 @@ export default function DiscoverableGenreSlider({ genres, headingLevel = 4 }: Di
         }
         @media (min-width: 1024px) {
           .discoverable-genre-slider :is(h3, h4) {
-            font-size: 32px;
+            font-size: clamp(32px, 3vw, 44px);
           }
         }
         .discoverable-genre-slider p {
@@ -79,7 +79,7 @@ export default function DiscoverableGenreSlider({ genres, headingLevel = 4 }: Di
         }
         @media (min-width: 1024px) {
           .discoverable-genre-slider p {
-            font-size: 16px;
+            font-size: clamp(16px, 1.6vw, 24px);
           }
         }
       `}</style>
@@ -103,11 +103,11 @@ export default function DiscoverableGenreSlider({ genres, headingLevel = 4 }: Di
             },
             1024: {
               slidesPerView: 2,
-              spaceBetween: 24,
+              spaceBetween: 20,
             },
             1280: {
               slidesPerView: 2,
-              spaceBetween: 24,
+              spaceBetween: 20,
             },
           }}
           className="w-full"

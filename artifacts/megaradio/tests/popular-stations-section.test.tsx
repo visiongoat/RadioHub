@@ -42,7 +42,7 @@ describe('popular section bounded loading reservation', () => {
     const { container } = render(<PopularStationsSection stations={Array.from({ length: 20 }, (_, i) => ({ _id: i, name: `Radio ${i}` }))}
       isPending={false} activeCountry="all" onPlay={vi.fn()} />);
     expect(screen.getAllByRole('button', {name:/^Radio /})).toHaveLength(12);
-    expect(container.querySelector('.grid')).toHaveClass('grid-cols-1', 'lg:grid-cols-2', 'xl:grid-cols-3', 'gap-y-[20px]');
+    expect(container.querySelector('.home-station-grid')).toBeInTheDocument();
   });
   it('changes only on request and preserves the selected batch after returning Home', () => {
     const pool=Array.from({length:24},(_,i)=>({_id:String(i),name:`Radio ${i}`}));

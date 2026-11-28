@@ -1,0 +1,89 @@
+.home-discover {
+  padding-top: 19px;
+}
+
+.home-genres__rail {
+  margin-inline-end: min(0px, calc((100% - 100vw) / 2));
+}
+
+.home-genres__rail .home-genre-tile {
+  width: 130px;
+  height: 45px;
+  border-radius: 5px;
+  background-repeat: no-repeat;
+}
+
+.home-genre-title {
+  text-shadow: 0 4px 10px rgb(0 0 0 / 30%);
+  overflow-wrap: anywhere;
+}
+
+.home-genre-tile[data-genre-theme='0'] {
+  background-image: url('/images/home-genres/warm.jpg');
+  background-size: 278px 186px;
+  background-position: -105px -48px;
+}
+
+.home-genre-tile:is([data-genre-theme='1'], [data-genre-theme='3']) {
+  background-image: url('/images/home-genres/blue.jpg');
+  background-size: 342px 256px;
+  background-position: -44px -55px;
+}
+
+.home-genre-tile[data-genre-theme='2'] {
+  background-image: url('/images/home-genres/spectrum.jpg');
+  background-size: 198px 132px;
+  background-position: -34px -21px;
+}
+
+.home-station-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px 21px;
+}
+
+@media (max-width: 639px) {
+  .home-discover .container { padding-inline: 20px; }
+
+  .home-discover .section-header { font-size: 14px; line-height: 16px; }
+}
+
+@media (min-width: 768px) {
+  .home-discover {
+    padding-top: 30px;
+    background-image:
+      radial-gradient(ellipse 290px 520px at -45px 38%, rgb(51 0 255 / 17%), transparent),
+      radial-gradient(ellipse 290px 500px at calc(100% + 35px) 77%, rgb(255 65 153 / 13%), transparent);
+  }
+
+  .home-genres__rail .home-genre-tile {
+    width: 280px;
+    height: 87px;
+    border-radius: 10px;
+  }
+
+  .home-genre-tile[data-genre-theme='0'] {
+    background-image: url('/images/home-genres/spectrum.jpg');
+    background-size: 408px 272px;
+    background-position: -87px -63px;
+  }
+
+  .home-genre-tile:is([data-genre-theme='1'], [data-genre-theme='3']) {
+    background-size: 602px 402px;
+    background-position: -58px -154px;
+  }
+
+  .home-genre-tile[data-genre-theme='2'] {
+    background-image: url('/images/home-genres/warm.jpg');
+    background-size: 302px 201px;
+    background-position: -16px -10px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .home-station-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 20px; }
+}
+
+@media (min-width: 1280px) {
+  .home-station-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
