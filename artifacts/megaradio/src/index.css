@@ -819,48 +819,49 @@ img[loading="lazy"] {
     @apply border-t border-[#313131];
   }
 
-  /* Hero container exact styling from original Hero.vue */
-  /* LCP OPTIMIZATION: Hero background now loaded as visible <img> element with fetchpriority=high */
+  /* Shared by the initial HTML and the interactive home route. */
   .hero-container {
-    @apply relative flex h-[255px] flex-col items-center justify-center overflow-hidden text-white md:h-[380px] lg:h-[447px];
-    background: linear-gradient(135deg, #1A0020 0%, #2D1B3D 25%, #4A1A45 50%, #2D1B3D 75%, #1A0020 100%);
-    background-color: #1A0020;
-    /* background-image removed - now loaded as <img> element to enable fetchpriority=high for LCP optimization */
-    background-size: cover;
-    background-position: center;
+    @apply relative flex h-[255px] flex-col items-center text-white md:h-[380px] lg:h-[447px];
+    padding-top: 27px;
+    background: #190721;
   }
 
-  /* Shared by server HTML and React. Short localized copy fits at normal
-     mobile sizes; enlarged accessibility text remains free to wrap. */
+  .hero-container picture {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .hero-container picture img {
+    height: 100%;
+    object-position: right bottom;
+  }
+
   .home-hero-copy {
     position: relative;
     z-index: 20;
     width: 100%;
     max-width: 1000px;
-    margin: 0 auto 1rem;
-    padding-inline: 1rem;
+    margin: 0 auto 42px;
+    padding-inline: 20px;
     text-align: center;
   }
 
   .home-hero-title {
-    margin: 0.375rem 0;
-    font-size: clamp(1.25rem, 6vw, 2.75rem);
+    margin: 10px 0 7px;
+    font-size: 1.125rem;
     font-weight: 700;
-    line-height: 1.15;
-    letter-spacing: -0.025em;
+    line-height: 1.17;
     overflow-wrap: anywhere;
   }
 
   .home-hero-eyebrow,
   .home-hero-tagline {
     margin: 0;
-    font-size: clamp(0.875rem, 2.5vw, 1.25rem);
+    font-size: 0.875rem;
     font-weight: 500;
-    line-height: 1.4;
-  }
-
-  .home-hero-copy[dir="rtl"] .home-hero-title {
-    letter-spacing: normal;
+    line-height: 1.15;
   }
 
   .hero-container::after {
@@ -869,24 +870,45 @@ img[loading="lazy"] {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 60px;
-    background: linear-gradient(to top, #0E0E0E 0%, transparent 100%);
+    height: 150px;
+    background: linear-gradient(to top, #0e0e0e, transparent);
     pointer-events: none;
     z-index: 5;
   }
 
-  /* Decorative wave overlay removed — `/images/wave.png` was lost during the
-     monorepo migration and the 404 caused a broken-image flash on the
-     header. The hero already has bg-gradient-blue.svg + heroleft pattern
-     for visual depth, so dropping this rule is safe. */
-  .hero-container::before {
-    content: '';
-    position: absolute;
-    height: 100%;
-    width: 100%;
-    background-repeat: no-repeat;
-    background-position: left;
-    pointer-events: none;
+  @media (max-width: 479px) {
+    .hero-container picture img {
+      transform: scale(1.16);
+      transform-origin: right bottom;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .hero-container {
+      padding-top: 60px;
+    }
+
+    .hero-container picture img {
+      object-position: center bottom;
+    }
+
+    .home-hero-copy {
+      margin-bottom: 40px;
+    }
+
+    .home-hero-title {
+      margin-block: 13px;
+      font-size: 2.75rem;
+    }
+
+    .home-hero-eyebrow,
+    .home-hero-tagline {
+      font-size: 1.25rem;
+    }
+
+    .hero-container::after {
+      height: 185px;
+    }
   }
 
   /* Scrollbar hide utility - EXACT from original */
@@ -951,19 +973,6 @@ img[loading="lazy"] {
       padding-right: 153px;
     }
   }
-
-  @media (min-width: 640px) {
-    .hero-container::before {
-      bottom: -10%;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .hero-container::before {
-      left: 0;
-    }
-  }
-
 
   /* Text pink color from original */
   .text-pink-600 {

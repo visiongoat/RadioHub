@@ -879,20 +879,18 @@ export default function RadioHeader({
 
   return (
     <>
-      {/* OPTIMIZED HEADER - Compact, responsive, balanced from all sides */}
       <nav className="fixed top-0 left-0 right-0 z-40 w-full text-white">
-        <div className="flex items-center justify-center border-b border-gray-900 bg-[#0E0E0E] sm:border-0 w-full">
+        <div className="flex w-full items-center justify-center bg-black">
           {/* Profile chrome spans the viewport; public pages retain the centered container. */}
           {/* CRITICAL: Desktop nav shows at xl(1280px) to prevent overflow on tablet */}
-          <div className={`container ${profileLayout ? 'lg:max-w-none lg:px-[30px]' : ''} relative box-border overflow-hidden grid grid-cols-5 xl:flex xl:justify-between h-[70px] md:h-[80px] lg:h-[90px] xl:h-[105px] items-center`}>
+          <div className={`container ${profileLayout ? 'lg:max-w-none lg:px-[30px]' : ''} relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center max-sm:!px-5 xl:flex xl:gap-4 min-[1400px]:gap-5 h-[70px] md:h-[80px] lg:h-[90px] xl:h-[105px]`}>
             
-            {/* Mobile: Menu + Logo together on left side | Desktop: Logo only */}
-            <div className="col-span-2 flex items-center gap-5 xl:col-auto xl:gap-2">
+            <div className="contents xl:flex xl:items-center">
               {/* Mobile Menu Toggle - hidden on desktop (xl+) */}
               <button
                 ref={mobileMenuTriggerRef}
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="xl:hidden flex items-center justify-center text-white flex-shrink-0 p-3 -m-3 min-h-[48px] min-w-[48px]"
+                className="-ml-3 flex size-12 items-center justify-center text-white xl:hidden"
                 aria-label={t('nav_menu', 'Menu')}
                 aria-expanded={isMobileMenuOpen}
                 aria-controls="mobile-navigation"
@@ -904,36 +902,38 @@ export default function RadioHeader({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
+                  <img src="/icons/header/menu.svg" width="24" height="24" alt="" />
                 )}
               </button>
 
               <HeaderBrand href={getLocalizedUrl("/")} variant={profileLayout ? 'profile' : 'public'} />
             </div>
 
-            {/* Desktop Navigation + Right Controls - all right-aligned together (visible xl+) */}
-            <div className="hidden xl:flex items-center gap-2 2xl:gap-3 ml-auto">
-              <Link href={getLocalizedUrl("/genres")} className="nav-item font-ubuntu font-bold text-sm leading-tight text-center whitespace-nowrap hover:text-[#FF4199] transition-colors">{t('nav_genres', 'Genres')}</Link>
-              <Link href={getLocalizedUrl("/recommendations")} className="nav-item font-ubuntu font-bold text-sm leading-tight text-center whitespace-nowrap hover:text-[#FF4199] transition-colors">{t('nav_for_you', 'For You')}</Link>
+            <div className="ml-auto hidden min-w-0 items-center gap-3 xl:flex min-[1400px]:gap-4 2xl:gap-5 [&>.nav-item]:min-w-0 [&>.nav-item]:truncate [&>.nav-item]:px-0 [&>.nav-item]:text-sm min-[1400px]:[&>.nav-item]:text-[15px]">
+              <Link href={getLocalizedUrl("/genres")} title={t('nav_genres', 'Genres')} className="nav-item">{t('nav_genres', 'Genres')}</Link>
+              <Link href={getLocalizedUrl("/request-station")} title={t('modal_request_station_title', 'Request a Station')} className="nav-item">{t('modal_request_station_title', 'Request a Station')}</Link>
               <button 
-                onClick={() => setShowAddStationModal?.(true)}
-                className="nav-item font-ubuntu font-bold text-sm leading-tight text-center hover:text-[#FF4199] transition-colors cursor-pointer whitespace-nowrap"
+                type="button"
+                onClick={() => setShowAddStationModal ? setShowAddStationModal(true) : setInternalAddStationOpen(true)}
+                className="nav-item"
+                title={t('nav_add_your_station', 'Add your station')}
               >
                 {t('nav_add_your_station', 'Add your station')}
               </button>
+              <Link href={getLocalizedUrl('/profile/favorites')} title={profileNavLabel('nav_your_favorites', 'favorites')} className="nav-item">
+                {profileNavLabel('nav_your_favorites', 'favorites')}
+              </Link>
+              <Link href={getLocalizedUrl("/recommendations")} title={t('nav_for_you', 'For You')} className="nav-item">{t('nav_for_you', 'For You')}</Link>
             </div>
 
-            {/* Right Side controls - col-span-3 on mobile/tablet */}
-            <div className="flex items-center col-span-3 justify-self-end xl:col-auto xl:ml-5 2xl:ml-8 gap-2 md:gap-3 xl:gap-4 2xl:gap-5">
+            <div className="flex shrink-0 items-center justify-self-end gap-[17px] sm:gap-3 min-[1400px]:gap-[15px]">
               {/* Mobile/Tablet: Authenticated users - Search + Bell + Country + Avatar (sıra: 1-2-3-4) */}
               {!authLoading && isAuthenticated && (
-                <div className="xl:hidden flex items-center" style={{ height: '45px', gap: '12px' }}>
+                <div className="flex h-[45px] items-center gap-3 max-sm:gap-[17px] xl:hidden">
                   {/* 1. Search Icon - Mobile only */}
                   <button
                     onClick={openSearch}
-                    className="flex items-center justify-center flex-shrink-0"
+                    className="flex items-center justify-center flex-shrink-0 max-sm:absolute max-sm:left-[60px] max-sm:top-[23px]"
                     style={{ width: '24px', height: '24px' }}
                     aria-label={t('general_search', 'Search')}
                     data-testid="button-search-mobile"
@@ -947,7 +947,7 @@ export default function RadioHeader({
                   <button
                     ref={notificationButtonRef}
                     onClick={toggleNotificationDropdown}
-                    className="relative flex items-center justify-center flex-shrink-0"
+                    className="relative flex items-center justify-center flex-shrink-0 max-sm:absolute max-sm:left-[96px] max-sm:top-[23px]"
                     style={{ width: '24px', height: '24px' }}
                     aria-label="Notifications"
                     aria-haspopup="dialog"
@@ -965,7 +965,7 @@ export default function RadioHeader({
                     ref={countryButtonMobileRef}
                     onClick={toggleCountryDropdown}
                     className="flex items-center justify-center flex-shrink-0"
-                    style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', borderRadius: '4px', backgroundColor: '#2F2F2F', border: '1px solid #2F2F2F', padding: '0px' }}
+                    style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', borderRadius: '4px', backgroundColor: '#0E0E0E', padding: '0px' }}
                     aria-label={t('general_select_country', 'Select country')}
                     aria-haspopup="listbox"
                     aria-expanded={isCountryDropdownOpen}
@@ -1016,7 +1016,7 @@ export default function RadioHeader({
                   {/* Search Icon - Mobile only */}
                   <button
                     onClick={openSearch}
-                    className="xl:hidden flex items-center justify-center flex-shrink-0"
+                    className="xl:hidden flex items-center justify-center flex-shrink-0 max-sm:absolute max-sm:left-[60px] max-sm:top-[23px]"
                     style={{ width: '24px', height: '24px' }}
                     aria-label={t('general_search', 'Search')}
                     data-testid="button-search-mobile-guest"
@@ -1031,7 +1031,7 @@ export default function RadioHeader({
                     ref={countryButtonMobileRef}
                     onClick={toggleCountryDropdown}
                     className="xl:hidden flex items-center justify-center flex-shrink-0"
-                    style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', borderRadius: '4px', backgroundColor: '#2F2F2F', border: '1px solid #2F2F2F', padding: '0px' }}
+                    style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', borderRadius: '4px', backgroundColor: '#0E0E0E', padding: '0px' }}
                     aria-label={t('general_select_country', 'Select country')}
                     aria-haspopup="listbox"
                     aria-expanded={isCountryDropdownOpen}
@@ -1061,11 +1061,11 @@ export default function RadioHeader({
                   {/* Login Icon */}
                   <Link
                     href={withAuthReturnTo(getLocalizedUrl('/login'), loginReturnTo)}
-                    className="xl:hidden flex items-center justify-center w-10 h-10 rounded-full bg-[#FF4199] hover:bg-[#E5357F] transition-colors"
+                    className="flex size-[45px] shrink-0 items-center justify-center overflow-hidden rounded-full transition-colors hover:ring-1 hover:ring-white/40 focus-visible:ring-2 focus-visible:ring-[#FF4199] xl:hidden"
                     aria-label={t('nav_login', 'Log in')}
                     data-testid="button-mobile-login"
                   >
-                    <User className="w-5 h-5 text-white" />
+                    <img src="/icons/tv-connect/empty-avatar.svg" width="45" height="45" alt="" />
                   </Link>
                 </>
               )}
@@ -1125,16 +1125,12 @@ export default function RadioHeader({
                   {/* 3. Search Button - desktop only (xl+) - Figma: 38x38px, #1D1D1D, rounded-[5px] */}
                   <button
                     onClick={openSearch}
-                    className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
+                    className="hidden size-[38px] items-center justify-center rounded-[5px] bg-[#1D1D1D] transition-colors hover:bg-[#2A2A2A] xl:flex"
                     aria-label={`${t('general_search', 'Search')}: ${isMac ? '⌘K' : 'Ctrl K'}`}
+                    aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
                     title={isMac ? '⌘K' : 'Ctrl+K'}
                   >
-                    <svg className="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
-                      {isMac ? '⌘K' : 'Ctrl K'}
-                    </kbd>
+                    <img src="/icons/search-normal.svg" width="20" height="20" alt="" />
                   </button>
 
                   {/* 4. Vertical Divider */}
@@ -1225,28 +1221,29 @@ export default function RadioHeader({
                   {/* Search Button - desktop only (xl+) - Figma: 38x38px */}
                   <button
                     onClick={openSearch}
-                    className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
+                    className="hidden size-[38px] items-center justify-center rounded-[5px] bg-[#1D1D1D] transition-colors hover:bg-[#2A2A2A] xl:flex"
                     aria-label={`${t('general_search', 'Search')}: ${isMac ? '⌘K' : 'Ctrl K'}`}
+                    aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
                     title={isMac ? '⌘K' : 'Ctrl+K'}
                   >
-                    <svg className="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
-                      {isMac ? '⌘K' : 'Ctrl K'}
-                    </kbd>
+                    <img src="/icons/search-normal.svg" width="20" height="20" alt="" />
                   </button>
                   
                   {/* Vertical Divider - desktop only (xl+) */}
                   <div className="hidden xl:block w-[2px] h-[33px] bg-[#222222] rounded-sm" />
                   
-                  {/* Log in Button - desktop only (xl+) */}
-                  <div className="hidden xl:flex items-center">
+                  <div className="hidden items-center gap-5 xl:flex">
                     <Link
                       href={withAuthReturnTo(getLocalizedUrl('/login'), loginReturnTo)}
-                      className="flex items-center justify-center text-white font-semibold transition-colors bg-[#D82C80] hover:bg-[#C32470] w-[97px] h-[45px] rounded-[25px] text-sm"
+                      className="inline-flex min-h-[45px] items-center whitespace-nowrap text-[15px] font-medium text-white transition-colors hover:text-[#FF4199]"
                     >
                       {t('nav_login', 'Log in')}
+                    </Link>
+                    <Link
+                      href={getLocalizedUrl('/signup')}
+                      className="inline-flex min-h-[45px] min-w-[97px] items-center justify-center whitespace-nowrap rounded-full bg-[#D82C80] px-4 text-[15px] font-medium text-white transition-colors hover:bg-[#C32470]"
+                    >
+                      {t('nav_signup', 'Sign Up')}
                     </Link>
                   </div>
                 </>
@@ -1507,7 +1504,7 @@ export default function RadioHeader({
           ? Math.max(16, (buttonRect?.right ?? 0) - dropdownWidth)
           : 'auto';
         const right = !isDesktopVisible ? 16 : 'auto';
-        const top = window.scrollY + (buttonRect?.bottom ?? 70) + 12;
+        const top = (buttonRect?.bottom ?? 70) + 12;
         
         return createPortal(
         <div 
@@ -1531,6 +1528,7 @@ export default function RadioHeader({
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={handleCountryKeyDown}
                 role="combobox"
+                aria-label={t('general_search_countries', 'Search countries')}
                 aria-expanded={true}
                 aria-controls="header-country-list-auth"
                 aria-activedescendant={activeCountryId ? `header-country-auth-${activeCountryId}` : undefined}
@@ -1632,7 +1630,7 @@ export default function RadioHeader({
           ? Math.max(16, (buttonRect?.right ?? 0) - dropdownWidth)
           : 'auto';
         const right = !isDesktopVisible ? 16 : 'auto';
-        const top = window.scrollY + (buttonRect?.bottom ?? 70) + 12;
+        const top = (buttonRect?.bottom ?? 70) + 12;
         
         return createPortal(
         <div 
@@ -1656,6 +1654,7 @@ export default function RadioHeader({
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={handleCountryKeyDown}
                 role="combobox"
+                aria-label={t('general_search_countries', 'Search countries')}
                 aria-expanded={true}
                 aria-controls="header-country-list-unauth"
                 aria-activedescendant={activeCountryId ? `header-country-unauth-${activeCountryId}` : undefined}

@@ -93,13 +93,9 @@ const Header = lazy(() => import("@/components/layout/header"));
 const Footer = lazy(() => import("@/components/layout/footer"));
 import { RadioHeader } from '@/lib/initial-home-components';
 
-// Minimal fallback for header during load - matches reference: 70px mobile, 90px desktop
+// Reserve the same header height while its route chunk loads.
 const RadioHeaderFallback = () => (
-  <nav className="fixed top-0 left-0 right-0 z-40 w-full text-white">
-    <div className="flex items-center justify-center h-[70px] lg:h-[90px] border-b border-gray-900 bg-[#0E0E0E] sm:border-0">
-      <div className="w-full max-w-[1512px] mx-auto h-[70px] lg:h-[90px] px-4 sm:px-6 md:px-8 lg:px-[30px] xl:px-[50px]" />
-    </div>
-  </nav>
+  <div aria-hidden="true" className="fixed inset-x-0 top-0 z-40 h-[70px] bg-black md:h-[80px] lg:h-[90px] xl:h-[105px]" />
 );
 
 // Minimal fallback for footer (can be empty since it's at bottom)
@@ -522,7 +518,7 @@ function PlayerWrapper() {
               client-side counterpart to the SSR breadcrumb in
               api-server/seo-renderer.ts so the BreadcrumbList JSON-LD always
               has matching visible links post-hydration. */}
-          {!isMessagesPage && !isStandaloneTvFlow && !hasProfileContentBreadcrumbs(englishPath) && <RouteBreadcrumbs />}
+          {!isMessagesPage && !isStandaloneTvFlow && !hasProfileContentBreadcrumbs(englishPath) && !/^\/genres\/[^/]+\/?$/.test(englishPath) && <RouteBreadcrumbs />}
           <PublicRouter selectedCountry={selectedCountry} onCountryChange={handleCountryChange} />
         </main>
         {/* Footer - hidden on profile pages per reference (user.vue has no footer) */}

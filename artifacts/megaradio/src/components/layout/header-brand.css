@@ -20,8 +20,8 @@
   position: relative;
   display: block;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 35px;
+  height: 35px;
   overflow: hidden;
   border-radius: 23%;
   background: #e747c7;
@@ -46,10 +46,9 @@
   display: none;
   align-items: baseline;
   white-space: nowrap;
-  font-size: 28px;
+  font-size: 20.384px;
   font-weight: 400;
-  line-height: 1;
-  letter-spacing: -0.65px;
+  line-height: normal;
 }
 
 .header-brand__mega {
@@ -80,6 +79,7 @@
 @media (min-width: 1280px) {
   .header-brand {
     min-height: 50px;
+    gap: 11px;
   }
 
   .header-brand__mark {

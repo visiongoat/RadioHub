@@ -330,7 +330,10 @@ describe('genre detail and localized states', () => {
     const genresUrl = `/${code}${translateUrl('/genres', code)}`;
     visit(`${genresUrl}/jazz`); render(detail());
     const labels = getGenrePageLabels(code);
-    expect(await screen.findByRole('heading', { name: `${genreDisplayName({slug:'jazz',name:'Jazz'},code)} ${labels.stations}` })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: genreDisplayName({slug: 'jazz'}, code) })).toBeInTheDocument();
+    const breadcrumbs = screen.getAllByRole('navigation', { name: 'breadcrumb' });
+    expect(breadcrumbs).toHaveLength(1);
+    expect(breadcrumbs[0].querySelectorAll('li')).toHaveLength(2);
     expect(screen.getByRole('link', { name: labels.genres })).toHaveAttribute('href', genresUrl);
   });
 

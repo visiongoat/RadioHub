@@ -328,14 +328,15 @@ describe.each(VARIANTS)(
       expect(getDesktopTrigger()).toHaveAccessibleName('Global: Select country');
     });
 
-    it.each([['Win32', 'Ctrl K'], ['MacIntel', '⌘K']])(
-      'includes the visible %s keyboard hint and localized search purpose without changing activation',
-      async (platform, hint) => {
+    it.each([['Win32', 'Ctrl K', 'Ctrl+K', 'Control+K'], ['MacIntel', '⌘K', '⌘K', 'Meta+K']])(
+      'exposes the %s keyboard shortcut and localized search purpose',
+      async (platform, hint, title, keys) => {
         vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
         routingState.language = 'de';
         renderHeader();
         const button = screen.getByRole('button', { name: `Suche: ${hint}` });
-        expect(within(button).getByText(hint)).toBeVisible();
+        expect(button).toHaveAttribute('title', title);
+        expect(button).toHaveAttribute('aria-keyshortcuts', keys);
         const user = userEvent.setup();
         button.focus();
         await user.keyboard('{Enter}');

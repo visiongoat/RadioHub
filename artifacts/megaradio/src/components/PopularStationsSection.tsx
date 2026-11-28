@@ -24,9 +24,8 @@ export default function PopularStationsSection({ stations, isPending, activeCoun
     <InView rootMargin="150px" className={isPending ? 'min-h-[1400px] lg:min-h-[750px] xl:min-h-[530px]' : undefined}>
       {(inView) => (
         <div className="container">
-          <div className="my-8">
-            <div className="flex items-start justify-between gap-4">
-            <h2 className="section-header pb-4">
+            <div className="flex items-center justify-between gap-4 pb-4 md:pb-[23px]">
+            <h2 className="section-header">
               {t('homepage_popular_stations', 'Popular Stations')}
               {!isPending && activeCountry !== 'all' && (
                 <span className="text-sm font-normal text-gray-400 ml-2">{t('from', 'from')} {getLocalizedCountryDisplayName(activeCountry, language)}</span>
@@ -40,15 +39,14 @@ export default function PopularStationsSection({ stations, isPending, activeCoun
             </button>
             </div>
             <div className="relative">
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
+              <div className="home-station-grid">
                 {!isPending && inView ? visibleStations.map((station, i) => (
                   <StationCard key={`popular-${station._id || i}`} station={station} onPlay={onPlay} showVotes={true} headingLevel={3} />
                 )) : Array.from({ length: isPending ? 12 : visibleStations.length }, (_, index) => (
-                  <div key={index} className="animate-pulse h-32 bg-gray-600 rounded-lg" />
+                  <div key={index} className="h-[102px] animate-pulse rounded-[10px] bg-[#2f2f2f] lg:h-[130px]" />
                 ))}
               </div>
             </div>
-          </div>
         </div>
       )}
     </InView>

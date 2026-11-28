@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Link, useLocation } from 'wouter';
-import { Home, Music, Compass, Heart, Users, User, Plus, ChevronRight, X } from 'lucide-react';
+import { Home, Music, Compass, Heart, Users, User, Plus, ChevronRight, Radio, X } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSeoRouting } from '@/hooks/useSeoRouting';
 
@@ -33,6 +33,7 @@ export default function MobileNavigation({ open, onOpenChange, triggerRef, isAut
   const links = [
     { path: '/', label: t('nav_home', 'Home'), icon: Home },
     { path: '/genres', label: t('nav_genres', 'Genres'), icon: Music },
+    { path: '/request-station', label: t('modal_request_station_title', 'Request a Station'), icon: Radio },
     { path: '/recommendations', label: t('nav_for_you', 'For You'), icon: Compass },
     { path: '/users', label: t('users', 'Community'), icon: Users },
   ];
