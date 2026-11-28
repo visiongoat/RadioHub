@@ -33,6 +33,8 @@ import { parseSeoCatalogPage } from './seo/catalog-pagination';
 import { sendSeoNotFound } from './seo/send-seo-not-found';
 import { buildPublicSeoRouteMatchers, collectSeoTranslations, decodePublicSeoPath } from './seo/public-route-matchers';
 import { buildPublicRoutePreloads } from './seo/frontend-asset-preloads';
+import { createPublicProfileShareHandler } from './seo/public-profile-share';
+import { pgPublicProfileForSharing } from './data/postgres-engagement-store';
 import { renderStationBootstrap } from './seo/station-bootstrap';
 import { renderTranslationBootstrap } from './seo/translation-bootstrap';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
@@ -374,7 +376,7 @@ app.use('/cast-receiver', (req, res, next) => {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Range',
-    'Cache-Control': 'public, max-age=3600',
+    'Cache-Control': 'public, max-age=60, must-revalidate',
   });
   if (req.method === 'OPTIONS') return void res.sendStatus(200);
   next();
@@ -578,6 +580,7 @@ app.use('/api/stream', forwardApiRequest(streamServiceProxy));
   // Warm the cache at startup so the first SSR request doesn't pay the IO.
   getProdAssetTags();
   app.get(['/pay', '/pay/'], createPaymentLinkShellHandler(getProdAssetTags));
+  app.use(createPublicProfileShareHandler(pgPublicProfileForSharing, getProdAssetTags));
 
   const seoRegionAlts = collectSeoTranslations('regions');
   const seoGenreAlts = collectSeoTranslations('genres');
